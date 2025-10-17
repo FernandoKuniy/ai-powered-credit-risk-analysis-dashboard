@@ -86,6 +86,20 @@ npm install
 npm run dev
 Visit http://localhost:3000 to open the web dashboard
 
+
+## 4. 💡 Run both servers together (recommended)
+A convenience script is included to launch both backend (FastAPI) and frontend (Next.js) at once.
+From the project root, run:
+
+chmod +x run_local.sh
+./run_local.sh
+
+This will:
+- Start the FastAPI backend on localhost:8000
+- Start the Next.js frontend on localhost:3000
+- Automatically stop both when you press Ctrl+C
+
+
 ## 🧩 Features
 - /score → Real-time credit scoring API endpoint
 - /portfolio → Portfolio statistics and analytics

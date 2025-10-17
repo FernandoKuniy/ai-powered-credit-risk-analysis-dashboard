@@ -206,3 +206,20 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 data/raw/lendingclub_sample.csv
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
+
+# System
+.DS_Store
+
+# Env files (root + frontend)
+.env*
+frontend/.env*
+# Vercel local state
+frontend/.vercel/
+# Misc Node junk
+npm-debug.log*
+.eslintcache
