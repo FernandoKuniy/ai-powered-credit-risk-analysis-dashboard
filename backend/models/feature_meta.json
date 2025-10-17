@@ -1,1 +1,1 @@
-{"feature_order":["loan_amnt","annual_inc","dti","emp_length","grade","term","purpose","home_ownership","state","revol_util","fico"]}
+{"feature_order": ["loan_amnt", "annual_inc", "dti", "emp_length", "grade", "term", "purpose", "home_ownership", "state", "revol_util", "fico"]}

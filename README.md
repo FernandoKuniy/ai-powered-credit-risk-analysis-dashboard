@@ -61,7 +61,26 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn app:app --reload --port 8000
 
-### Frontend setup
+## 💻 Virtual Environment Notes
+A Python virtual environment keeps dependencies isolated from your system Python.
+Create and activate it before installing packages.
+# Create
+python3.11 -m venv .venv
+
+# Activate (macOS/Linux)
+source .venv/bin/activate
+
+# Activate (Windows)
+.venv\Scripts\activate
+
+# Install dependencies
+pip install -r backend/requirements.txt
+
+# Deactivate when done
+deactivate
+
+
+### 3. Frontend setup
 cd ../frontend
 npm install
 npm run dev
