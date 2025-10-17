@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { scoreApplication } from "@/lib/api";
+import { scoreApplication } from "../../lib/api";
 
 export default function ScorePage() {
   const [loading, setLoading] = useState(false);
