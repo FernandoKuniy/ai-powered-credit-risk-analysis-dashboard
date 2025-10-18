@@ -12,10 +12,9 @@ export type ScorePayload = {
   fico: number;
 };
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export async function scoreApplication(payload: ScorePayload) {
-  const res = await fetch(`${BASE}/score`, {
+  const res = await fetch("/api/score", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
