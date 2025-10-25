@@ -6,6 +6,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from schemas import ScoreRequest, ScoreResponse
 from supabase import create_client, Client
 from typing import Dict, Any
+from dotenv import load_dotenv
+
+# Load environment variables from .env.local file
+load_dotenv("../.env.local")
 
 app = FastAPI()
 
@@ -22,10 +26,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Optional: simple API key guard (set API_KEY in prod; leave empty in dev) ---
-API_KEY = os.getenv("API_KEY", "")
+# --- API key guard ---
+API_KEY = os.getenv("API_KEY")
+if not API_KEY:
+    raise ValueError("API_KEY environment variable is required")
+
 def require_key(x_api_key: str | None = Header(default=None)):
-    if API_KEY and x_api_key != API_KEY:
+    if not x_api_key or x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 THRESHOLD = 0.25  # approval cutoff on PD
