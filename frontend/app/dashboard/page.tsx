@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { getPortfolio, simulatePortfolio, PortfolioData, SimulationData } from "../../lib/portfolio";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts";
+import Navigation from "../components/Navigation";
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658'];
 
@@ -45,10 +46,13 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <main className="card">
-        <div className="text-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-white/70">Loading portfolio data...</p>
+      <main>
+        <Navigation />
+        <div className="card">
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-4"></div>
+            <p className="text-white/70">Loading portfolio data...</p>
+          </div>
         </div>
       </main>
     );
@@ -56,10 +60,13 @@ export default function DashboardPage() {
 
   if (error) {
     return (
-      <main className="card">
-        <div className="text-center py-8">
-          <p className="text-red-400 mb-4">{error}</p>
-          <button onClick={loadPortfolio} className="btn">Retry</button>
+      <main>
+        <Navigation />
+        <div className="card">
+          <div className="text-center py-8">
+            <p className="text-red-400 mb-4">{error}</p>
+            <button onClick={loadPortfolio} className="btn">Retry</button>
+          </div>
         </div>
       </main>
     );
@@ -84,7 +91,9 @@ export default function DashboardPage() {
   }
 
   return (
-    <main className="grid gap-6">
+    <main>
+      <Navigation />
+      <div className="grid gap-6">
       {/* KPI Cards */}
       <section className="grid gap-4 md:grid-cols-4">
         <div className="card">
@@ -252,6 +261,7 @@ export default function DashboardPage() {
           </div>
         </section>
       )}
+      </div>
     </main>
   );
 }

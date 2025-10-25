@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { scoreApplication } from "../../lib/api";
+import Navigation from "../components/Navigation";
 
 export default function ScorePage() {
   const [loading, setLoading] = useState(false);
@@ -37,8 +38,10 @@ export default function ScorePage() {
   }
 
   return (
-    <main className="card">
-      <h2 className="text-xl font-semibold mb-4">Scoring Form</h2>
+    <main>
+      <Navigation />
+      <div className="card">
+        <h2 className="text-xl font-semibold mb-4">Scoring Form</h2>
       <form className="grid gap-4 md:grid-cols-2" onSubmit={onSubmit}>
         {/* numeric fields */}
         <label className="block"><span className="label">Loan Amount</span>
@@ -99,6 +102,7 @@ export default function ScorePage() {
             <div className="text-2xl font-semibold capitalize">{result.decision}</div></div>
         </div>
       )}
+      </div>
     </main>
   );
 }
