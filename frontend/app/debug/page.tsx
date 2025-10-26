@@ -21,6 +21,8 @@ export default function AuthDebug() {
         {session && (
           <>
             <div><strong>Access Token:</strong> {session.access_token ? 'exists' : 'null'}</div>
+            <div><strong>User ID:</strong> {session.user.id}</div>
+            <div><strong>User Email:</strong> {session.user.email}</div>
           </>
         )}
       </div>

@@ -88,8 +88,17 @@ export function SignUpForm() {
     return (
       <div className="text-center">
         <div className="text-green-400 mb-4">✓ Account created successfully!</div>
-        <p className="text-white/70">
-          Please check your email to confirm your account.
+        <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4 mb-4">
+          <p className="text-white/90 font-medium mb-2">📧 Check your email</p>
+          <p className="text-white/70 text-sm">
+            We've sent a confirmation link to <strong>{email}</strong>
+          </p>
+          <p className="text-white/70 text-sm mt-2">
+            Click the link in your email to activate your account and start using the platform.
+          </p>
+        </div>
+        <p className="text-white/60 text-xs">
+          Didn't receive the email? Check your spam folder or try signing up again.
         </p>
       </div>
     );
