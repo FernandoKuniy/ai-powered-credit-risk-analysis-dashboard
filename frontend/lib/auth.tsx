@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useContext, useEffect, useState } from 'react';
-import { User, UserProfile, supabase, createFreshSupabaseClient } from './supabase';
+import { User, UserProfile, supabase } from './supabase';
 import type { Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -22,6 +22,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [fetchingProfile, setFetchingProfile] = useState(false);
   const [authInitialized, setAuthInitialized] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Handle hydration - defer all auth operations until after hydration
   useEffect(() => {
@@ -80,7 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initializeAuth();
 
-    // Listen for auth changes - simplified approach
+    // Listen for auth changes - prevent duplicate triggers
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -96,11 +97,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (session?.user) {
         console.log('👤 User found in auth change:', session.user.id);
-        await fetchUserProfile(session.user.id);
+        // Only fetch if this is a different user or we don't have a user loaded
+        if (!user || user.id !== session.user.id) {
+          await fetchUserProfile(session.user.id);
+        } else {
+          console.log('👤 Same user already loaded, skipping profile fetch');
+        }
       } else {
         console.log('❌ No user in auth change');
         setUser(null);
         setLoading(false);
+        setCurrentUserId(null);
       }
     });
 
@@ -113,9 +120,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const fetchUserProfile = async (userId: string) => {
     console.log('🚀 fetchUserProfile called with userId:', userId);
     
-    // Prevent multiple simultaneous calls for the same user
-    if (fetchingProfile) {
-      console.log('⏳ Already fetching profile, skipping...');
+    // Strong debounce: prevent ALL concurrent calls
+    if (fetchingProfile || currentUserId === userId) {
+      console.log('⏳ Already fetching profile or same user, skipping...');
       return;
     }
     
@@ -127,89 +134,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     
     setFetchingProfile(true);
+    setCurrentUserId(userId);
     
-    // Retry logic for profile fetching
-    const maxRetries = 3;
-    let attempt = 0;
-    let currentSupabase = supabase;
-    
-    while (attempt < maxRetries) {
-      try {
-        attempt++;
-        console.log(`🔄 Profile fetch attempt ${attempt}/${maxRetries} for user:`, userId);
-        
-        // On retry attempts, try with a fresh client
-        if (attempt > 1) {
-          console.log('🔄 Creating fresh Supabase client for retry...');
-          currentSupabase = createFreshSupabaseClient();
-        }
-        
-        // Add timeout to prevent hanging
-        const queryPromise = currentSupabase
-          .from('user_profiles')
-          .select('*')
-          .eq('id', userId)
-          .single();
-        
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error(`Query timeout after 10 seconds`)), 10000)
-        );
-        
-        console.log('📡 Executing profile query with timeout...');
-        const { data: profile, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
+    try {
+      console.log('📡 Executing profile query...');
+      const { data: profile, error } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
 
-        console.log('✅ Supabase query completed!');
-        console.log('Profile query result:', { profile, error });
+      console.log('✅ Supabase query completed!');
+      console.log('Profile query result:', { profile, error });
 
-        if (error) {
-          console.error('Profile query error:', error);
-          // If profile doesn't exist, just set user to null
-          if (error.code === 'PGRST116') { // No rows returned
-            console.log('User profile not found in database');
-            setUser(null);
-            setLoading(false);
-            return;
-          }
-          throw error;
-        }
-
-        if (!profile) {
-          console.error('No profile found for user:', userId);
+      if (error) {
+        console.error('Profile query error:', error);
+        // If profile doesn't exist, just set user to null
+        if (error.code === 'PGRST116') { // No rows returned
+          console.log('User profile not found in database');
           setUser(null);
           setLoading(false);
           return;
         }
-
-        // Get current session for email
-        const { data: { session } } = await currentSupabase.auth.getSession();
-        
-        setUser({
-          id: userId,
-          email: session?.user?.email || '',
-          profile,
-        });
-        
-        // Success - break out of retry loop
-        break;
-        
-      } catch (error) {
-        console.error(`💥 Error on attempt ${attempt}:`, error);
-        
-        if (attempt === maxRetries) {
-          console.error('💥 All retry attempts failed, giving up');
-          setUser(null);
-          break;
-        }
-        
-        // Wait before retrying
-        console.log(`⏳ Waiting 2 seconds before retry ${attempt + 1}...`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        throw error;
       }
+
+      if (!profile) {
+        console.error('No profile found for user:', userId);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      // Get current session for email
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      setUser({
+        id: userId,
+        email: session?.user?.email || '',
+        profile,
+      });
+      
+    } catch (error) {
+      console.error('💥 Error fetching user profile:', error);
+      setUser(null);
+    } finally {
+      console.log('🏁 fetchUserProfile finally block - setting loading to false');
+      setLoading(false);
+      setFetchingProfile(false);
+      setCurrentUserId(null);
     }
-    
-    console.log('🏁 fetchUserProfile finally block - setting loading to false');
-    setLoading(false);
-    setFetchingProfile(false);
   };
 
   const signIn = async (email: string, password: string) => {
