@@ -59,6 +59,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('🚀 fetchUserProfile called with userId:', userId);
     try {
       console.log('Fetching user profile for:', userId);
+      console.log('🔗 Supabase client:', supabase);
+      console.log('🔗 Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+      
       const { data: profile, error } = await supabase
         .from('user_profiles')
         .select('*')
@@ -90,9 +93,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         profile,
       });
     } catch (error) {
-      console.error('Error fetching user profile:', error);
+      console.error('💥 Error fetching user profile:', error);
+      console.error('💥 Error type:', typeof error);
+      console.error('💥 Error message:', error?.message);
+      console.error('💥 Error stack:', error?.stack);
       setUser(null);
     } finally {
+      console.log('🏁 fetchUserProfile finally block - setting loading to false');
       setLoading(false);
     }
   };
