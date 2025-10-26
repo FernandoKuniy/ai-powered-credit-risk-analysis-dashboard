@@ -20,6 +20,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchingProfile, setFetchingProfile] = useState(false);
 
   useEffect(() => {
     // Get initial session
@@ -57,21 +58,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchUserProfile = async (userId: string) => {
     console.log('🚀 fetchUserProfile called with userId:', userId);
+    
+    // Prevent multiple simultaneous calls
+    if (fetchingProfile) {
+      console.log('⏳ Already fetching profile, skipping...');
+      return;
+    }
+    
+    setFetchingProfile(true);
     try {
       console.log('Fetching user profile for:', userId);
       console.log('🔗 Supabase client:', supabase);
       console.log('🔗 Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
       
-      console.log('📡 About to execute Supabase query...');
-      
-      // Test basic Supabase connectivity first
-      console.log('🧪 Testing basic Supabase connectivity...');
-      try {
-        const testResult = await supabase.from('user_profiles').select('count').limit(1);
-        console.log('🧪 Basic connectivity test result:', testResult);
-      } catch (testError) {
-        console.error('🧪 Basic connectivity test failed:', testError);
+      // Ensure we have a valid session before making queries
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (!currentSession) {
+        console.log('❌ No valid session found, signing out');
+        await supabase.auth.signOut();
+        throw new Error('No valid session');
       }
+      
+      console.log('📡 About to execute Supabase query...');
       
       // Add timeout to prevent hanging
       const queryPromise = supabase
@@ -108,7 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setUser({
         id: userId,
-        email: session?.user.email || '',
+        email: currentSession.user.email || '',
         profile,
       });
     } catch (error) {
@@ -120,6 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       console.log('🏁 fetchUserProfile finally block - setting loading to false');
       setLoading(false);
+      setFetchingProfile(false);
     }
   };
 
