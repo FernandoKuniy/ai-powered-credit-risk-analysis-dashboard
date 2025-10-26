@@ -22,24 +22,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [fetchingProfile, setFetchingProfile] = useState(false);
   const [authInitialized, setAuthInitialized] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  // Handle hydration - defer all auth operations until after hydration
+  useEffect(() => {
+    console.log('🚀 Component mounted, setting hydrated to true');
+    setIsHydrated(true);
+  }, []);
 
   useEffect(() => {
+    // Only initialize auth after hydration is complete
+    if (!isHydrated) {
+      console.log('⏳ Waiting for hydration to complete...');
+      return;
+    }
+
     let mounted = true;
     
-    // Get initial session with timeout
+    console.log('🔍 Starting auth initialization after hydration...');
+    
+    // Simplified auth initialization - no timeouts, let Supabase handle its own retries
     const initializeAuth = async () => {
       try {
-        console.log('🔍 Initial session check starting...');
-        const sessionPromise = supabase.auth.getSession();
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Initial session check timeout')), 10000)
-        );
-        
-        const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any;
+        console.log('🔍 Getting initial session...');
+        const { data: { session }, error } = await supabase.auth.getSession();
         
         if (!mounted) return;
         
-        console.log('🔍 Initial session check:', session);
+        if (error) {
+          console.error('❌ Session check error:', error);
+          setUser(null);
+          setLoading(false);
+          setAuthInitialized(true);
+          return;
+        }
+        
+        console.log('🔍 Initial session:', session);
         setSession(session);
         setAuthInitialized(true);
         
@@ -63,7 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initializeAuth();
 
-    // Listen for auth changes - but only after initial setup
+    // Listen for auth changes - simplified approach
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -91,7 +109,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [isHydrated]);
 
   const fetchUserProfile = async (userId: string) => {
     console.log('🚀 fetchUserProfile called with userId:', userId);
@@ -112,67 +130,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setFetchingProfile(true);
     try {
       console.log('Fetching user profile for:', userId);
-      console.log('🔗 Supabase client:', supabase);
-      console.log('🔗 Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
       
-      console.log('📡 About to execute Supabase query...');
-      
-      // Create a timeout wrapper for any Supabase operation
-      const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number = 5000): Promise<T> => {
-        return Promise.race([
-          promise,
-          new Promise<T>((_, reject) => 
-            setTimeout(() => reject(new Error(`Operation timeout after ${timeoutMs}ms`)), timeoutMs)
-          )
-        ]);
-      };
-      
-      // Try to get session with timeout
-      console.log('🔍 Checking session with timeout...');
-      let currentSession;
-      try {
-        const sessionResult = await withTimeout(supabase.auth.getSession(), 5000);
-        currentSession = sessionResult.data.session;
-        console.log('✅ Session check completed:', !!currentSession);
-      } catch (sessionError) {
-        console.error('❌ Session check failed or timed out:', sessionError);
-        // Force sign out to clear any corrupted session state
-        console.log('🔄 Forcing sign out due to session check failure...');
-        try {
-          await withTimeout(supabase.auth.signOut(), 3000);
-        } catch (signOutError) {
-          console.error('❌ Sign out also failed:', signOutError);
-        }
-        throw new Error('Session check failed');
-      }
-      
-      if (!currentSession) {
-        console.log('❌ No valid session found, signing out');
-        await supabase.auth.signOut();
-        throw new Error('No valid session');
-      }
-      
-      // Execute profile query with timeout
-      console.log('🔍 Executing profile query with timeout...');
-      const profileResult = await withTimeout(
-        supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('id', userId)
-          .single() as unknown as Promise<any>,
-        10000
-      );
-      
-      const { data: profile, error } = profileResult;
+      // Simplified approach - just query the profile directly
+      // Let Supabase handle its own retries and timeouts
+      console.log('📡 Executing profile query...');
+      const { data: profile, error } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
 
       console.log('✅ Supabase query completed!');
       console.log('Profile query result:', { profile, error });
 
       if (error) {
         console.error('Profile query error:', error);
-        // If profile doesn't exist, don't sign out - just set user to null
+        // If profile doesn't exist, just set user to null
         if (error.code === 'PGRST116') { // No rows returned
-          console.log('User profile not found in database, but session is valid');
+          console.log('User profile not found in database');
           setUser(null);
           setLoading(false);
           return;
@@ -182,22 +157,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!profile) {
         console.error('No profile found for user:', userId);
-        console.log('User profile not found, setting user to null');
         setUser(null);
         setLoading(false);
         return;
       }
 
+      // Get current session for email
+      const { data: { session } } = await supabase.auth.getSession();
+      
       setUser({
         id: userId,
-        email: currentSession.user.email || '',
+        email: session?.user?.email || '',
         profile,
       });
     } catch (error) {
       console.error('💥 Error fetching user profile:', error);
-      console.error('💥 Error type:', typeof error);
-      console.error('💥 Error message:', (error as any)?.message);
-      console.error('💥 Error stack:', (error as any)?.stack);
       setUser(null);
     } finally {
       console.log('🏁 fetchUserProfile finally block - setting loading to false');
