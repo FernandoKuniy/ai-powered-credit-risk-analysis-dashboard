@@ -95,8 +95,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('💥 Error fetching user profile:', error);
       console.error('💥 Error type:', typeof error);
-      console.error('💥 Error message:', error?.message);
-      console.error('💥 Error stack:', error?.stack);
+      console.error('💥 Error message:', (error as any)?.message);
+      console.error('💥 Error stack:', (error as any)?.stack);
       setUser(null);
     } finally {
       console.log('🏁 fetchUserProfile finally block - setting loading to false');
