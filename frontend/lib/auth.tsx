@@ -23,19 +23,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [fetchingProfile, setFetchingProfile] = useState(false);
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      console.log('🔍 Initial session check:', session);
-      setSession(session);
-      if (session?.user) {
-        console.log('👤 User found in session:', session.user.id);
-        fetchUserProfile(session.user.id);
-      } else {
-        console.log('❌ No user in session');
-        setUser(null);
-        setLoading(false);
+    let mounted = true;
+    
+    // Get initial session with timeout
+    const initializeAuth = async () => {
+      try {
+        console.log('🔍 Initial session check starting...');
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Initial session check timeout')), 10000)
+        );
+        
+        const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any;
+        
+        if (!mounted) return;
+        
+        console.log('🔍 Initial session check:', session);
+        setSession(session);
+        if (session?.user) {
+          console.log('👤 User found in session:', session.user.id);
+          fetchUserProfile(session.user.id);
+        } else {
+          console.log('❌ No user in session');
+          setUser(null);
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('❌ Initial session check failed:', error);
+        if (mounted) {
+          setUser(null);
+          setLoading(false);
+        }
       }
-    });
+    };
+
+    initializeAuth();
 
     // Listen for auth changes
     const {
@@ -53,7 +75,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const fetchUserProfile = async (userId: string) => {
@@ -71,28 +96,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('🔗 Supabase client:', supabase);
       console.log('🔗 Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
       
-      // Ensure we have a valid session before making queries
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      console.log('📡 About to execute Supabase query...');
+      
+      // Create a timeout wrapper for any Supabase operation
+      const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number = 5000): Promise<T> => {
+        return Promise.race([
+          promise,
+          new Promise<T>((_, reject) => 
+            setTimeout(() => reject(new Error(`Operation timeout after ${timeoutMs}ms`)), timeoutMs)
+          )
+        ]);
+      };
+      
+      // Try to get session with timeout
+      console.log('🔍 Checking session with timeout...');
+      let currentSession;
+      try {
+        const sessionResult = await withTimeout(supabase.auth.getSession(), 5000);
+        currentSession = sessionResult.data.session;
+        console.log('✅ Session check completed:', !!currentSession);
+      } catch (sessionError) {
+        console.error('❌ Session check failed or timed out:', sessionError);
+        // Force sign out to clear any corrupted session state
+        console.log('🔄 Forcing sign out due to session check failure...');
+        try {
+          await withTimeout(supabase.auth.signOut(), 3000);
+        } catch (signOutError) {
+          console.error('❌ Sign out also failed:', signOutError);
+        }
+        throw new Error('Session check failed');
+      }
+      
       if (!currentSession) {
         console.log('❌ No valid session found, signing out');
         await supabase.auth.signOut();
         throw new Error('No valid session');
       }
       
-      console.log('📡 About to execute Supabase query...');
-      
-      // Add timeout to prevent hanging
-      const queryPromise = supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-      
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Query timeout after 10 seconds')), 10000)
+      // Execute profile query with timeout
+      console.log('🔍 Executing profile query with timeout...');
+      const profileResult = await withTimeout(
+        supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', userId)
+          .single() as unknown as Promise<any>,
+        10000
       );
       
-      const { data: profile, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
+      const { data: profile, error } = profileResult;
 
       console.log('✅ Supabase query completed!');
       console.log('Profile query result:', { profile, error });
