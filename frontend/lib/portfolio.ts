@@ -22,19 +22,31 @@ export type SimulationData = {
   applications_rejected: number;
 };
 
-export async function getPortfolio(): Promise<PortfolioData> {
+export async function getPortfolio(accessToken?: string): Promise<PortfolioData> {
+  const headers: HeadersInit = { "Content-Type": "application/json" };
+  
+  if (accessToken) {
+    headers["Authorization"] = `Bearer ${accessToken}`;
+  }
+
   const res = await fetch("/api/portfolio", {
     method: "GET",
-    headers: { "Content-Type": "application/json" },
+    headers,
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
-export async function simulatePortfolio(threshold: number): Promise<SimulationData> {
+export async function simulatePortfolio(threshold: number, accessToken?: string): Promise<SimulationData> {
+  const headers: HeadersInit = { "Content-Type": "application/json" };
+  
+  if (accessToken) {
+    headers["Authorization"] = `Bearer ${accessToken}`;
+  }
+
   const res = await fetch(`/api/portfolio/simulate?threshold=${threshold}`, {
     method: "GET",
-    headers: { "Content-Type": "application/json" },
+    headers,
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();

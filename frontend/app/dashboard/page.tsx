@@ -4,6 +4,7 @@ import { getPortfolio, simulatePortfolio, PortfolioData, SimulationData } from "
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts";
 import Navigation from "../components/Navigation";
 import ProtectedRoute from "../components/ProtectedRoute";
+import { useAuth } from "../../lib/auth";
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658'];
 
@@ -13,6 +14,7 @@ export default function DashboardPage() {
   const [threshold, setThreshold] = useState(0.25);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { session } = useAuth();
 
   useEffect(() => {
     loadPortfolio();
@@ -27,7 +29,7 @@ export default function DashboardPage() {
   async function loadPortfolio() {
     try {
       setLoading(true);
-      const data = await getPortfolio();
+      const data = await getPortfolio(session?.access_token);
       setPortfolio(data);
     } catch (err: any) {
       setError(err?.message || "Failed to load portfolio");
@@ -38,7 +40,7 @@ export default function DashboardPage() {
 
   async function loadSimulation() {
     try {
-      const data = await simulatePortfolio(threshold);
+      const data = await simulatePortfolio(threshold, session?.access_token);
       setSimulation(data);
     } catch (err: any) {
       console.error("Simulation failed:", err);

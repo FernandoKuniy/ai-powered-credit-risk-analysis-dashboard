@@ -40,10 +40,37 @@ THRESHOLD = 0.25  # approval cutoff on PD
 # ---- Supabase client ----
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 supabase: Client | None = None
 
 if SUPABASE_URL and SUPABASE_KEY:
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# JWT verification function
+def verify_supabase_jwt(token: str) -> dict | None:
+    """Verify Supabase JWT token and return payload if valid"""
+    if not SUPABASE_JWT_SECRET:
+        print("Warning: SUPABASE_JWT_SECRET not configured, JWT verification disabled")
+        return None
+    
+    try:
+        import jwt
+        payload = jwt.decode(
+            token, 
+            SUPABASE_JWT_SECRET, 
+            algorithms=["HS256"],
+            audience="authenticated"
+        )
+        return payload
+    except jwt.ExpiredSignatureError:
+        print("JWT token has expired")
+        return None
+    except jwt.InvalidTokenError as e:
+        print(f"Invalid JWT token: {e}")
+        return None
+    except Exception as e:
+        print(f"JWT verification error: {e}")
+        return None
 
 # ---- Load artifacts at startup ----
 MODEL_PATH = "models/model.pkl"
@@ -112,15 +139,10 @@ def score(req: ScoreRequest, authorization: str | None = Header(default=None)):
     # Extract user ID from Supabase JWT token
     user_id = None
     if authorization and authorization.startswith("Bearer "):
-        try:
-            import jwt
-            token = authorization.split(" ")[1]
-            # Note: In production, you should verify the JWT signature
-            # For now, we'll decode without verification for demo purposes
-            payload = jwt.decode(token, options={"verify_signature": False})
+        token = authorization.split(" ")[1]
+        payload = verify_supabase_jwt(token)
+        if payload:
             user_id = payload.get("sub")  # Supabase user ID
-        except Exception as e:
-            print(f"Warning: Failed to decode JWT: {e}")
     
     df = _to_dataframe(req)
     try:
@@ -161,13 +183,25 @@ def score(req: ScoreRequest, authorization: str | None = Header(default=None)):
     return ScoreResponse(pd=pd_hat, risk_grade=risk, decision=decision, top_features=None)
 
 @app.get("/portfolio", dependencies=[Depends(require_key)])
-def portfolio():
+def portfolio(authorization: str | None = Header(default=None)):
     if not supabase:
         return {"error": "Supabase not connected"}
     
+    # Extract user ID from Supabase JWT token
+    user_id = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1]
+        payload = verify_supabase_jwt(token)
+        if payload:
+            user_id = payload.get("sub")  # Supabase user ID
+    
     try:
-        # Get total applications
-        total_result = supabase.table("applications").select("id", count="exact").execute()
+        # Build query with optional user filtering
+        query = supabase.table("applications").select("id", count="exact")
+        if user_id:
+            query = query.eq("user_id", user_id)
+        
+        total_result = query.execute()
         total_applications = total_result.count or 0
         
         if total_applications == 0:
@@ -180,8 +214,12 @@ def portfolio():
                 "recent_applications": []
             }
         
-        # Get aggregated stats
-        stats_result = supabase.table("applications").select("pd, risk_grade, decision").execute()
+        # Get aggregated stats with user filtering
+        stats_query = supabase.table("applications").select("pd, risk_grade, decision")
+        if user_id:
+            stats_query = stats_query.eq("user_id", user_id)
+        
+        stats_result = stats_query.execute()
         applications = stats_result.data
         
         # Calculate metrics
@@ -196,10 +234,15 @@ def portfolio():
         for grade in "ABCDEFG":
             grade_counts[grade] = sum(1 for app in applications if app["risk_grade"] == grade)
         
-        # Recent applications (last 20)
-        recent_result = supabase.table("applications").select(
+        # Recent applications (last 20) with user filtering
+        recent_query = supabase.table("applications").select(
             "created_at, loan_amnt, annual_inc, pd, risk_grade, decision"
-        ).order("created_at", desc=True).limit(20).execute()
+        ).order("created_at", desc=True).limit(20)
+        
+        if user_id:
+            recent_query = recent_query.eq("user_id", user_id)
+        
+        recent_result = recent_query.execute()
         
         return {
             "total_applications": total_applications,
@@ -214,13 +257,25 @@ def portfolio():
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 @app.get("/portfolio/simulate", dependencies=[Depends(require_key)])
-def simulate_portfolio(threshold: float = Query(0.25, ge=0.05, le=0.50)):
+def simulate_portfolio(threshold: float = Query(0.25, ge=0.05, le=0.50), authorization: str | None = Header(default=None)):
     if not supabase:
         return {"error": "Supabase not connected"}
     
+    # Extract user ID from Supabase JWT token
+    user_id = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1]
+        payload = verify_supabase_jwt(token)
+        if payload:
+            user_id = payload.get("sub")  # Supabase user ID
+    
     try:
-        # Get all applications
-        result = supabase.table("applications").select("pd, risk_grade").execute()
+        # Get all applications with optional user filtering
+        query = supabase.table("applications").select("pd, risk_grade")
+        if user_id:
+            query = query.eq("user_id", user_id)
+        
+        result = query.execute()
         applications = result.data
         
         if not applications:

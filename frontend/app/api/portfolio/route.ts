@@ -1,13 +1,24 @@
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: Request) {
   const baseUrl = process.env.NEXT_PUBLIC_API_URL!;
+  
+  // Extract Authorization header from incoming request
+  const authHeader = req.headers.get("Authorization");
+  
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+    "X-API-Key": process.env.API_KEY!,
+  };
+  
+  // Forward the Authorization header if present
+  if (authHeader) {
+    headers["Authorization"] = authHeader;
+  }
+  
   const res = await fetch(`${baseUrl}/portfolio`, {
     method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": process.env.API_KEY!,
-    },
+    headers,
   });
 
   const data = await res.json();
