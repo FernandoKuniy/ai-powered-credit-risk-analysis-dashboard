@@ -137,6 +137,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setCurrentUserId(userId);
     
     try {
+      // First, verify the current session is still valid
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        console.log('❌ Session invalid or expired, signing out');
+        await supabase.auth.signOut();
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+      
+      // Check if the session user matches the requested user ID
+      if (session.user.id !== userId) {
+        console.log('❌ Session user ID mismatch, signing out');
+        await supabase.auth.signOut();
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+      
       console.log('📡 Executing profile query...');
       const { data: profile, error } = await supabase
         .from('user_profiles')
@@ -165,18 +185,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
         return;
       }
-
-      // Get current session for email
-      const { data: { session } } = await supabase.auth.getSession();
       
       setUser({
         id: userId,
-        email: session?.user?.email || '',
+        email: session.user.email || '',
         profile,
       });
       
     } catch (error) {
       console.error('💥 Error fetching user profile:', error);
+      // If there's an error, sign out to clear any inconsistent state
+      try {
+        await supabase.auth.signOut();
+      } catch (signOutError) {
+        console.error('Error signing out:', signOutError);
+      }
       setUser(null);
     } finally {
       console.log('🏁 fetchUserProfile finally block - setting loading to false');

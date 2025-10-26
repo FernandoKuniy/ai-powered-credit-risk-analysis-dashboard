@@ -72,6 +72,19 @@ def verify_supabase_jwt(token: str) -> dict | None:
         print(f"JWT verification error: {e}")
         return None
 
+def get_user_id_from_token(authorization: str | None) -> tuple[str | None, bool]:
+    """Extract user ID from JWT token and return (user_id, is_valid_token)"""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None, False
+    
+    token = authorization.split(" ")[1]
+    payload = verify_supabase_jwt(token)
+    
+    if payload:
+        return payload.get("sub"), True
+    else:
+        return None, False
+
 # ---- Load artifacts at startup ----
 MODEL_PATH = "models/model.pkl"
 META_PATH = "models/feature_meta.json"
@@ -137,12 +150,7 @@ def score(req: ScoreRequest, authorization: str | None = Header(default=None)):
         raise HTTPException(status_code=503, detail="Model not loaded. Train or add backend/models/model.pkl.")
     
     # Extract user ID from Supabase JWT token
-    user_id = None
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.split(" ")[1]
-        payload = verify_supabase_jwt(token)
-        if payload:
-            user_id = payload.get("sub")  # Supabase user ID
+    user_id, is_valid_token = get_user_id_from_token(authorization)
     
     df = _to_dataframe(req)
     try:
@@ -188,12 +196,7 @@ def portfolio(authorization: str | None = Header(default=None)):
         return {"error": "Supabase not connected"}
     
     # Extract user ID from Supabase JWT token
-    user_id = None
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.split(" ")[1]
-        payload = verify_supabase_jwt(token)
-        if payload:
-            user_id = payload.get("sub")  # Supabase user ID
+    user_id, is_valid_token = get_user_id_from_token(authorization)
     
     try:
         # Build query with optional user filtering
@@ -262,12 +265,7 @@ def simulate_portfolio(threshold: float = Query(0.25, ge=0.05, le=0.50), authori
         return {"error": "Supabase not connected"}
     
     # Extract user ID from Supabase JWT token
-    user_id = None
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.split(" ")[1]
-        payload = verify_supabase_jwt(token)
-        if payload:
-            user_id = payload.get("sub")  # Supabase user ID
+    user_id, is_valid_token = get_user_id_from_token(authorization)
     
     try:
         # Get all applications with optional user filtering
