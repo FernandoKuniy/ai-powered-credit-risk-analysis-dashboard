@@ -1,9 +1,34 @@
 "use client";
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { LoginForm, SignUpForm } from '../components/AuthForms';
+import { useAuth } from '../../lib/auth';
+import { useRouter } from 'next/navigation';
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  // Redirect authenticated users to dashboard
+  useEffect(() => {
+    if (!loading && user) {
+      router.push('/dashboard');
+    }
+  }, [user, loading, router]);
+
+  // Show loading while checking auth state
+  if (loading) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+      </main>
+    );
+  }
+
+  // Don't render auth forms if user is already authenticated
+  if (user) {
+    return null; // Will redirect to dashboard
+  }
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-gray-900">

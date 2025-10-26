@@ -1,6 +1,7 @@
 "use client";
 import { useState } from 'react';
 import { useAuth } from '../../lib/auth';
+import { useRouter } from 'next/navigation';
 
 export function LoginForm() {
   const [email, setEmail] = useState('');
@@ -8,6 +9,7 @@ export function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { signIn } = useAuth();
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,9 +20,11 @@ export function LoginForm() {
     
     if (error) {
       setError(error.message);
+      setLoading(false);
+    } else {
+      // Successful sign-in - redirect to dashboard
+      router.push('/dashboard');
     }
-    
-    setLoading(false);
   };
 
   return (
