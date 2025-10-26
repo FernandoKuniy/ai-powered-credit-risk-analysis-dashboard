@@ -62,11 +62,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         console.error('Profile query error:', error);
+        // If profile doesn't exist, sign out the user to clear stale session
+        if (error.code === 'PGRST116') { // No rows returned
+          console.log('User profile not found, signing out stale session');
+          await supabase.auth.signOut();
+        }
         throw error;
       }
 
       if (!profile) {
         console.error('No profile found for user:', userId);
+        console.log('User profile not found, signing out stale session');
+        await supabase.auth.signOut();
         throw new Error('No profile found');
       }
 
