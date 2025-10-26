@@ -62,12 +62,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('🔗 Supabase client:', supabase);
       console.log('🔗 Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
       
-      const { data: profile, error } = await supabase
+      console.log('📡 About to execute Supabase query...');
+      
+      // Test basic Supabase connectivity first
+      console.log('🧪 Testing basic Supabase connectivity...');
+      try {
+        const testResult = await supabase.from('user_profiles').select('count').limit(1);
+        console.log('🧪 Basic connectivity test result:', testResult);
+      } catch (testError) {
+        console.error('🧪 Basic connectivity test failed:', testError);
+      }
+      
+      // Add timeout to prevent hanging
+      const queryPromise = supabase
         .from('user_profiles')
         .select('*')
         .eq('id', userId)
         .single();
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Query timeout after 10 seconds')), 10000)
+      );
+      
+      const { data: profile, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
 
+      console.log('✅ Supabase query completed!');
       console.log('Profile query result:', { profile, error });
 
       if (error) {
