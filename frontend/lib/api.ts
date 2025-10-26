@@ -12,11 +12,16 @@ export type ScorePayload = {
   fico: number;
 };
 
+export async function scoreApplication(payload: ScorePayload, accessToken?: string) {
+  const headers: HeadersInit = { "Content-Type": "application/json" };
+  
+  if (accessToken) {
+    headers["Authorization"] = `Bearer ${accessToken}`;
+  }
 
-export async function scoreApplication(payload: ScorePayload) {
   const res = await fetch("/api/score", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(await res.text());

@@ -105,9 +105,23 @@ def health():
     }
 
 @app.post("/score", response_model=ScoreResponse, dependencies=[Depends(require_key)])
-def score(req: ScoreRequest):
+def score(req: ScoreRequest, authorization: str | None = Header(default=None)):
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded. Train or add backend/models/model.pkl.")
+    
+    # Extract user ID from Supabase JWT token
+    user_id = None
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            import jwt
+            token = authorization.split(" ")[1]
+            # Note: In production, you should verify the JWT signature
+            # For now, we'll decode without verification for demo purposes
+            payload = jwt.decode(token, options={"verify_signature": False})
+            user_id = payload.get("sub")  # Supabase user ID
+        except Exception as e:
+            print(f"Warning: Failed to decode JWT: {e}")
+    
     df = _to_dataframe(req)
     try:
         pd_hat = float(model.predict_proba(df)[:, 1][0])
@@ -135,6 +149,11 @@ def score(req: ScoreRequest):
                 "risk_grade": risk,
                 "decision": decision
             }
+            
+            # Add user_id if available
+            if user_id:
+                application_data["user_id"] = user_id
+                
             supabase.table("applications").insert(application_data).execute()
         except Exception as e:
             print(f"Warning: Failed to save to Supabase: {e}")

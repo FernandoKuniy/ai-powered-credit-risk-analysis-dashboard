@@ -26,6 +26,10 @@ Set these environment variables in your Vercel project settings:
 # Backend API URL
 NEXT_PUBLIC_API_URL=https://your-backend.onrender.com
 
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+
 # API Key (same as backend if using)
 API_KEY=your-secret-api-key
 ```
