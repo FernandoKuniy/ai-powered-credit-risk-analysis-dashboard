@@ -24,10 +24,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('🔍 Initial session check:', session);
       setSession(session);
       if (session?.user) {
+        console.log('👤 User found in session:', session.user.id);
         fetchUserProfile(session.user.id);
       } else {
+        console.log('❌ No user in session');
         setUser(null);
         setLoading(false);
       }
@@ -37,10 +40,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('🔄 Auth state change:', event, session);
       setSession(session);
       if (session?.user) {
+        console.log('👤 User found in auth change:', session.user.id);
         await fetchUserProfile(session.user.id);
       } else {
+        console.log('❌ No user in auth change');
         setUser(null);
         setLoading(false);
       }
@@ -50,6 +56,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const fetchUserProfile = async (userId: string) => {
+    console.log('🚀 fetchUserProfile called with userId:', userId);
     try {
       console.log('Fetching user profile for:', userId);
       const { data: profile, error } = await supabase
