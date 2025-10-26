@@ -1,7 +1,6 @@
 "use client";
 import { createContext, useContext, useEffect, useState } from 'react';
-import { User, UserProfile } from './supabase';
-import { supabase } from './supabase';
+import { User, UserProfile, supabase, createFreshSupabaseClient } from './supabase';
 import type { Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -128,56 +127,89 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     
     setFetchingProfile(true);
-    try {
-      console.log('Fetching user profile for:', userId);
-      
-      // Simplified approach - just query the profile directly
-      // Let Supabase handle its own retries and timeouts
-      console.log('📡 Executing profile query...');
-      const { data: profile, error } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
+    
+    // Retry logic for profile fetching
+    const maxRetries = 3;
+    let attempt = 0;
+    let currentSupabase = supabase;
+    
+    while (attempt < maxRetries) {
+      try {
+        attempt++;
+        console.log(`🔄 Profile fetch attempt ${attempt}/${maxRetries} for user:`, userId);
+        
+        // On retry attempts, try with a fresh client
+        if (attempt > 1) {
+          console.log('🔄 Creating fresh Supabase client for retry...');
+          currentSupabase = createFreshSupabaseClient();
+        }
+        
+        // Add timeout to prevent hanging
+        const queryPromise = currentSupabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', userId)
+          .single();
+        
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error(`Query timeout after 10 seconds`)), 10000)
+        );
+        
+        console.log('📡 Executing profile query with timeout...');
+        const { data: profile, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
 
-      console.log('✅ Supabase query completed!');
-      console.log('Profile query result:', { profile, error });
+        console.log('✅ Supabase query completed!');
+        console.log('Profile query result:', { profile, error });
 
-      if (error) {
-        console.error('Profile query error:', error);
-        // If profile doesn't exist, just set user to null
-        if (error.code === 'PGRST116') { // No rows returned
-          console.log('User profile not found in database');
+        if (error) {
+          console.error('Profile query error:', error);
+          // If profile doesn't exist, just set user to null
+          if (error.code === 'PGRST116') { // No rows returned
+            console.log('User profile not found in database');
+            setUser(null);
+            setLoading(false);
+            return;
+          }
+          throw error;
+        }
+
+        if (!profile) {
+          console.error('No profile found for user:', userId);
           setUser(null);
           setLoading(false);
           return;
         }
-        throw error;
-      }
 
-      if (!profile) {
-        console.error('No profile found for user:', userId);
-        setUser(null);
-        setLoading(false);
-        return;
+        // Get current session for email
+        const { data: { session } } = await currentSupabase.auth.getSession();
+        
+        setUser({
+          id: userId,
+          email: session?.user?.email || '',
+          profile,
+        });
+        
+        // Success - break out of retry loop
+        break;
+        
+      } catch (error) {
+        console.error(`💥 Error on attempt ${attempt}:`, error);
+        
+        if (attempt === maxRetries) {
+          console.error('💥 All retry attempts failed, giving up');
+          setUser(null);
+          break;
+        }
+        
+        // Wait before retrying
+        console.log(`⏳ Waiting 2 seconds before retry ${attempt + 1}...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
-
-      // Get current session for email
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      setUser({
-        id: userId,
-        email: session?.user?.email || '',
-        profile,
-      });
-    } catch (error) {
-      console.error('💥 Error fetching user profile:', error);
-      setUser(null);
-    } finally {
-      console.log('🏁 fetchUserProfile finally block - setting loading to false');
-      setLoading(false);
-      setFetchingProfile(false);
     }
+    
+    console.log('🏁 fetchUserProfile finally block - setting loading to false');
+    setLoading(false);
+    setFetchingProfile(false);
   };
 
   const signIn = async (email: string, password: string) => {

@@ -11,6 +11,12 @@ console.log('🔧 Key starts with:', supabaseAnonKey?.substring(0, 10) + '...');
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+// Function to create a fresh Supabase client instance
+export const createFreshSupabaseClient = () => {
+  console.log('🔄 Creating fresh Supabase client...');
+  return createClient(supabaseUrl, supabaseAnonKey);
+}
+
 export type UserProfile = {
   id: string
   email: string
