@@ -13,13 +13,17 @@ export default function ProtectedRoute({ children, requiredRole }: ProtectedRout
   const router = useRouter();
 
   useEffect(() => {
+    console.log('ProtectedRoute - loading:', loading, 'user:', user, 'requiredRole:', requiredRole);
+    
     if (!loading) {
       if (!user) {
+        console.log('ProtectedRoute - No user, redirecting to /auth');
         router.push('/auth');
         return;
       }
       
       if (requiredRole && user.profile.role !== requiredRole) {
+        console.log('ProtectedRoute - Wrong role, redirecting to /');
         router.push('/');
         return;
       }
