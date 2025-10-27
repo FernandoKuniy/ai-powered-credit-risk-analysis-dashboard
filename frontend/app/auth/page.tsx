@@ -64,7 +64,7 @@ export default function AuthPage() {
           </div>
 
           {/* Auth forms */}
-          {isLogin ? <LoginForm /> : <SignUpForm />}
+          {isLogin ? <LoginForm /> : <SignUpForm onSwitchToLogin={() => setIsLogin(true)} />}
         </div>
       </div>
     </main>

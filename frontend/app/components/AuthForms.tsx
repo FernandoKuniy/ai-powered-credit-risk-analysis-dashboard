@@ -63,24 +63,31 @@ export function LoginForm() {
   );
 }
 
-export function SignUpForm() {
+export function SignUpForm({ onSwitchToLogin }: { onSwitchToLogin?: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [showSwitchToLogin, setShowSwitchToLogin] = useState(false);
   const { signUp } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setShowSwitchToLogin(false);
 
     const { error } = await signUp(email, password, fullName);
     
     if (error) {
       setError(error.message);
+      
+      // Show option to switch to login if it's a duplicate email
+      if (error.code === 'DUPLICATE_EMAIL') {
+        setShowSwitchToLogin(true);
+      }
     } else {
       setSuccess(true);
     }
@@ -144,6 +151,20 @@ export function SignUpForm() {
       {error && (
         <div className="text-red-400 text-sm">{error}</div>
       )}
+      
+      {showSwitchToLogin && onSwitchToLogin && (
+        <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-3 mb-4">
+          <p className="text-white/90 text-sm mb-2">Already have an account?</p>
+          <button
+            type="button"
+            onClick={onSwitchToLogin}
+            className="text-blue-400 hover:text-blue-300 text-sm underline"
+          >
+            Sign in instead
+          </button>
+        </div>
+      )}
+      
       <button
         type="submit"
         disabled={loading}

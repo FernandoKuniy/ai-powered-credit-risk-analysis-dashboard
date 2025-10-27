@@ -97,6 +97,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       },
     });
+    
+    // Handle specific error cases
+    if (error) {
+      // Check for duplicate email error
+      if (error.message?.includes('User already registered') || 
+          error.message?.includes('already been registered') ||
+          error.message?.includes('already exists')) {
+        return { 
+          error: {
+            ...error,
+            message: 'An account with this email already exists. Please sign in instead.',
+            code: 'DUPLICATE_EMAIL'
+          }
+        };
+      }
+      
+      // Check for email confirmation required
+      if (error.message?.includes('confirm your email') || 
+          error.message?.includes('email confirmation')) {
+        return { 
+          error: {
+            ...error,
+            message: 'Please check your email and click the confirmation link to activate your account.',
+            code: 'EMAIL_CONFIRMATION_REQUIRED'
+          }
+        };
+      }
+    }
+    
     return { error };
   };
 
