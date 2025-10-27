@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useContext, useEffect, useState } from 'react';
-import { User, UserProfile, supabase } from './supabase';
+import { User, UserProfile, supabase, getSupabaseClient } from './supabase';
 import type { Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -21,7 +21,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [profileRetryTimeout, setProfileRetryTimeout] = useState<NodeJS.Timeout | null>(null);
 
+  // Check if DEV_MODE is enabled
+  const isDevMode = process.env.DEV_MODE === 'true';
+  const devAccessToken = process.env.DEV_ACCESS_TOKEN;
+
   useEffect(() => {
+    if (isDevMode && devAccessToken) {
+      // DEV_MODE: Skip Supabase auth and use hardcoded token
+      handleDevModeAuth();
+    } else {
+      // Normal auth flow
+      handleNormalAuth();
+    }
+
+    return () => {
+      // Clean up any pending retry timeout
+      if (profileRetryTimeout) {
+        clearTimeout(profileRetryTimeout);
+      }
+    };
+  }, [profileRetryTimeout, isDevMode, devAccessToken]);
+
+  const handleDevModeAuth = async () => {
+    try {
+      // Create a mock session with the hardcoded token
+      const mockSession: Session = {
+        access_token: devAccessToken!,
+        refresh_token: '',
+        expires_in: 3600,
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        token_type: 'bearer',
+        user: {
+          id: 'dev-user-id', // This will be replaced with real user ID from token
+          email: 'dev@example.com', // This will be replaced with real email from profile
+          aud: 'authenticated',
+          role: 'authenticated',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          app_metadata: {},
+          user_metadata: {},
+        }
+      };
+
+      setSession(mockSession);
+      
+      // Fetch real user profile using the hardcoded token
+      await fetchUserProfileWithToken(devAccessToken!);
+    } catch (error) {
+      console.error('DEV_MODE auth error:', error);
+      setUser(null);
+      setLoading(false);
+    }
+  };
+
+  const handleNormalAuth = () => {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -49,12 +102,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       subscription.unsubscribe();
-      // Clean up any pending retry timeout
-      if (profileRetryTimeout) {
-        clearTimeout(profileRetryTimeout);
-      }
     };
-  }, [profileRetryTimeout]);
+  };
+
+  const fetchUserProfileWithToken = async (accessToken: string, retryCount = 0) => {
+    const maxRetries = 5;
+    const baseDelay = 1000; // 1 second base delay
+    const maxDelay = 10000; // Maximum 10 seconds delay
+    
+    try {
+      // Use the DEV_MODE client with the hardcoded token
+      const devClient = getSupabaseClient();
+      
+      const { data: profile, error } = await devClient
+        .from('user_profiles')
+        .select('*')
+        .single();
+
+      if (error) {
+        // If profile doesn't exist and we haven't exceeded retries, try again
+        if (error.code === 'PGRST116' && retryCount < maxRetries) {
+          const delay = Math.min(baseDelay * Math.pow(2, retryCount), maxDelay); // Exponential backoff with cap
+          console.log(`Profile not found in DEV_MODE, retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`);
+          
+          const timeout = setTimeout(() => {
+            fetchUserProfileWithToken(accessToken, retryCount + 1);
+          }, delay);
+          
+          setProfileRetryTimeout(timeout);
+          return;
+        }
+        
+        console.error('Failed to fetch user profile in DEV_MODE:', error);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      if (profile) {
+        setUser({
+          id: profile.id,
+          email: profile.email,
+          profile,
+        });
+        setLoading(false);
+      } else {
+        setUser(null);
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Error fetching user profile in DEV_MODE:', error);
+      setUser(null);
+      setLoading(false);
+    }
+  };
 
   const fetchUserProfile = async (userId: string, retryCount = 0) => {
     const maxRetries = 5;
@@ -118,6 +219,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signIn = async (email: string, password: string) => {
+    if (isDevMode) {
+      // In DEV_MODE, sign in is not needed - just return success
+      return { error: null };
+    }
+    
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -126,6 +232,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signUp = async (email: string, password: string, fullName?: string) => {
+    if (isDevMode) {
+      // In DEV_MODE, sign up is not needed - just return success
+      return { error: null, isNewUser: true };
+    }
+    
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -194,11 +305,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    if (isDevMode) {
+      // In DEV_MODE, just clear the local state
+      setUser(null);
+      setSession(null);
+      return;
+    }
+    
     await supabase.auth.signOut();
   };
 
   const updateProfile = async (updates: Partial<UserProfile>) => {
     if (!user) return { error: new Error('No user logged in') };
+
+    if (isDevMode) {
+      // In DEV_MODE, use the DEV_MODE client
+      const devClient = getSupabaseClient();
+      const { error } = await devClient
+        .from('user_profiles')
+        .update(updates)
+        .eq('id', user.id);
+
+      if (!error) {
+        await fetchUserProfileWithToken(devAccessToken!);
+      }
+
+      return { error };
+    }
 
     const { error } = await supabase
       .from('user_profiles')
