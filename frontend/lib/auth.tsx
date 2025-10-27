@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { User, UserProfile, supabase, createFreshSupabaseClient } from './supabase';
 import type { Session } from '@supabase/supabase-js';
 
@@ -19,12 +19,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [fetchingProfile, setFetchingProfile] = useState(false);
   const [authInitialized, setAuthInitialized] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const fetchingProfileRef = useRef(false);
+  const currentUserIdRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  console.log('🔍 AuthProvider render - loading:', loading, 'user:', user?.id, 'session:', !!session, 'fetchingProfile:', fetchingProfile, 'authInitialized:', authInitialized, 'isHydrated:', isHydrated);
+  console.log('🔍 AuthProvider render - loading:', loading, 'user:', user?.id, 'session:', !!session, 'fetchingProfile:', fetchingProfileRef.current, 'currentUserId:', currentUserIdRef.current);
 
   // Handle hydration - defer all auth operations until after hydration
   useEffect(() => {
@@ -110,21 +111,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('❌ No user in auth change, clearing state');
         setUser(null);
         setLoading(false);
-        setCurrentUserId(null);
+        currentUserIdRef.current = null;
       }
     });
 
     return () => {
       mounted = false;
       subscription.unsubscribe();
+      // Cancel any in-flight profile fetch
+      if (abortControllerRef.current) {
+        console.log('🛑 Cancelling in-flight profile fetch on unmount');
+        abortControllerRef.current.abort();
+      }
     };
-  }, [isHydrated, user]);
+  }, [isHydrated]);
 
   const fetchUserProfile = async (userId: string) => {
-    console.log('🚀 fetchUserProfile called with userId:', userId, 'fetchingProfile:', fetchingProfile, 'currentUserId:', currentUserId, 'current user:', user?.id);
+    console.log('🚀 fetchUserProfile called with userId:', userId, 'fetchingProfile:', fetchingProfileRef.current, 'currentUserId:', currentUserIdRef.current, 'current user:', user?.id);
     
     // Strong debounce: prevent ALL concurrent calls
-    if (fetchingProfile || currentUserId === userId) {
+    if (fetchingProfileRef.current || currentUserIdRef.current === userId) {
       console.log('⏳ Already fetching profile or same user, skipping...');
       return;
     }
@@ -136,9 +142,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     
+    // Cancel any existing request
+    if (abortControllerRef.current) {
+      console.log('🛑 Cancelling previous request');
+      abortControllerRef.current.abort();
+    }
+    
+    // Create new AbortController for this request
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    
     console.log('🔒 Setting fetchingProfile to true and currentUserId to:', userId);
-    setFetchingProfile(true);
-    setCurrentUserId(userId);
+    fetchingProfileRef.current = true;
+    currentUserIdRef.current = userId;
     
     try {
       console.log('🔍 Step 1: Verifying current session...');
@@ -167,45 +183,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('✅ User ID matches, proceeding to profile query...');
       console.log('📡 Executing profile query for user:', userId);
       
-      // Create a fresh Supabase client for this query to avoid hanging
-      const freshClient = createFreshSupabaseClient();
-      
-      // Retry mechanism for profile query with fresh client
-      let profile, error;
-      let retryCount = 0;
-      const maxRetries = 3;
-      
-      while (retryCount < maxRetries) {
-        try {
-          console.log(`📡 Profile query attempt ${retryCount + 1}/${maxRetries} with fresh client`);
-          
-          const profilePromise = freshClient
-            .from('user_profiles')
-            .select('*')
-            .eq('id', userId)
-            .single();
-          
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Profile query timeout')), 3000)
-          );
-          
-          const result = await Promise.race([profilePromise, timeoutPromise]) as any;
-          profile = result.data;
-          error = result.error;
-          console.log('✅ Profile query succeeded on attempt', retryCount + 1);
-          break;
-        } catch (err: any) {
-          console.log(`❌ Profile query attempt ${retryCount + 1} failed:`, err.message);
-          retryCount++;
-          if (retryCount < maxRetries) {
-            console.log(`🔄 Retrying in 1 second...`);
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          } else {
-            console.log('❌ All profile query attempts failed');
-            error = err;
-          }
-        }
+      // Check if request was aborted
+      if (abortController.signal.aborted) {
+        console.log('🛑 Request aborted, stopping profile fetch');
+        return;
       }
+      
+      // Simple profile query with AbortController
+      const profilePromise = supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      
+      // Create a timeout promise that aborts the request
+      const timeoutPromise = new Promise((_, reject) => {
+        const timeoutId = setTimeout(() => {
+          abortController.abort();
+          reject(new Error('Profile query timeout'));
+        }, 5000);
+        
+        abortController.signal.addEventListener('abort', () => {
+          clearTimeout(timeoutId);
+        });
+      });
+      
+      const result = await Promise.race([profilePromise, timeoutPromise]) as any;
+      const { data: profile, error } = result;
 
       console.log('✅ Supabase query completed!');
       console.log('Profile query result:', { profile, error });
@@ -254,8 +258,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('🏁 Setting fetchingProfile to false');
       console.log('🏁 Setting currentUserId to null');
       setLoading(false);
-      setFetchingProfile(false);
-      setCurrentUserId(null);
+      fetchingProfileRef.current = false;
+      currentUserIdRef.current = null;
+      abortControllerRef.current = null;
       console.log('🏁 fetchUserProfile cleanup complete');
     }
   };
