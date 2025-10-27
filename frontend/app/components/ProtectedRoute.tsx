@@ -12,25 +12,34 @@ export default function ProtectedRoute({ children, requiredRole }: ProtectedRout
   const { user, loading } = useAuth();
   const router = useRouter();
 
+  console.log('🛡️ ProtectedRoute render - loading:', loading, 'user:', user?.id, 'user role:', user?.profile?.role, 'requiredRole:', requiredRole);
+
   useEffect(() => {
-    console.log('ProtectedRoute - loading:', loading, 'user:', user, 'requiredRole:', requiredRole);
+    console.log('🛡️ ProtectedRoute useEffect - loading:', loading, 'user:', user?.id, 'requiredRole:', requiredRole);
     
     if (!loading) {
+      console.log('🛡️ Loading complete, checking user...');
       if (!user) {
-        console.log('ProtectedRoute - No user, redirecting to /auth');
+        console.log('🛡️ No user found, redirecting to /auth');
         router.push('/auth');
         return;
       }
       
+      console.log('🛡️ User found:', user.id, 'role:', user.profile.role);
       if (requiredRole && user.profile.role !== requiredRole) {
-        console.log('ProtectedRoute - Wrong role, redirecting to /');
+        console.log('🛡️ Role mismatch - user role:', user.profile.role, 'required:', requiredRole, 'redirecting to /');
         router.push('/');
         return;
       }
+      
+      console.log('🛡️ Access granted for user:', user.id);
+    } else {
+      console.log('🛡️ Still loading, waiting...');
     }
   }, [user, loading, requiredRole, router]);
 
   if (loading) {
+    console.log('🛡️ ProtectedRoute rendering loading state');
     return (
       <div className="card">
         <div className="text-center py-8">
@@ -42,10 +51,12 @@ export default function ProtectedRoute({ children, requiredRole }: ProtectedRout
   }
 
   if (!user) {
+    console.log('🛡️ ProtectedRoute rendering null (will redirect)');
     return null; // Will redirect to /auth
   }
 
   if (requiredRole && user.profile.role !== requiredRole) {
+    console.log('🛡️ ProtectedRoute rendering access denied');
     return (
       <div className="card">
         <div className="text-center py-8">
@@ -56,5 +67,6 @@ export default function ProtectedRoute({ children, requiredRole }: ProtectedRout
     );
   }
 
+  console.log('🛡️ ProtectedRoute rendering children for user:', user.id);
   return <>{children}</>;
 }

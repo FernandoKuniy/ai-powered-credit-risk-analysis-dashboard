@@ -24,6 +24,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isHydrated, setIsHydrated] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
+  console.log('🔍 AuthProvider render - loading:', loading, 'user:', user?.id, 'session:', !!session, 'fetchingProfile:', fetchingProfile, 'authInitialized:', authInitialized, 'isHydrated:', isHydrated);
+
   // Handle hydration - defer all auth operations until after hydration
   useEffect(() => {
     console.log('🚀 Component mounted, setting hydrated to true');
@@ -31,6 +33,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    console.log('🔄 Auth useEffect triggered - isHydrated:', isHydrated, 'user:', user?.id);
+    
     // Only initialize auth after hydration is complete
     if (!isHydrated) {
       console.log('⏳ Waiting for hydration to complete...');
@@ -85,7 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('🔄 Auth state change:', event, session);
+      console.log('🔄 Auth state change:', event, 'session exists:', !!session, 'user id:', session?.user?.id);
       
       // Skip INITIAL_SESSION events since we handle that separately
       if (event === 'INITIAL_SESSION') {
@@ -93,14 +97,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       
+      console.log('📝 Setting session state...');
       setSession(session);
       
       if (session?.user) {
-        console.log('👤 User found in auth change:', session.user.id);
+        console.log('👤 User found in auth change:', session.user.id, 'current user:', user?.id);
         // Always fetch profile on auth state change to ensure we have the latest data
+        console.log('🚀 About to call fetchUserProfile from auth state change...');
         await fetchUserProfile(session.user.id);
+        console.log('✅ fetchUserProfile completed from auth state change');
       } else {
-        console.log('❌ No user in auth change');
+        console.log('❌ No user in auth change, clearing state');
         setUser(null);
         setLoading(false);
         setCurrentUserId(null);
@@ -114,7 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [isHydrated, user]);
 
   const fetchUserProfile = async (userId: string) => {
-    console.log('🚀 fetchUserProfile called with userId:', userId);
+    console.log('🚀 fetchUserProfile called with userId:', userId, 'fetchingProfile:', fetchingProfile, 'currentUserId:', currentUserId, 'current user:', user?.id);
     
     // Strong debounce: prevent ALL concurrent calls
     if (fetchingProfile || currentUserId === userId) {
@@ -129,10 +136,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     
+    console.log('🔒 Setting fetchingProfile to true and currentUserId to:', userId);
     setFetchingProfile(true);
     setCurrentUserId(userId);
     
     try {
+      console.log('🔍 Step 1: Verifying current session...');
       // First, verify the current session is still valid
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
@@ -144,6 +153,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       
+      console.log('✅ Session verified, user id:', session.user.id);
+      
       // Check if the session user matches the requested user ID
       if (session.user.id !== userId) {
         console.log('❌ Session user ID mismatch, signing out');
@@ -153,7 +164,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       
-      console.log('📡 Executing profile query...');
+      console.log('✅ User ID matches, proceeding to profile query...');
+      console.log('📡 Executing profile query for user:', userId);
       const { data: profile, error } = await supabase
         .from('user_profiles')
         .select('*')
@@ -164,10 +176,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('Profile query result:', { profile, error });
 
       if (error) {
-        console.error('Profile query error:', error);
+        console.error('❌ Profile query error:', error);
         // If profile doesn't exist, just set user to null
         if (error.code === 'PGRST116') { // No rows returned
-          console.log('User profile not found in database');
+          console.log('❌ User profile not found in database');
           setUser(null);
           setLoading(false);
           return;
@@ -176,32 +188,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (!profile) {
-        console.error('No profile found for user:', userId);
+        console.error('❌ No profile found for user:', userId);
         setUser(null);
         setLoading(false);
         return;
       }
       
+      console.log('✅ Profile found, setting user state...');
+      console.log('Profile data:', profile);
       setUser({
         id: userId,
         email: session.user.email || '',
         profile,
       });
+      console.log('✅ User state set successfully');
       
     } catch (error) {
       console.error('💥 Error fetching user profile:', error);
       // If there's an error, sign out to clear any inconsistent state
       try {
+        console.log('🔄 Attempting to sign out due to error...');
         await supabase.auth.signOut();
+        console.log('✅ Sign out successful');
       } catch (signOutError) {
-        console.error('Error signing out:', signOutError);
+        console.error('❌ Error signing out:', signOutError);
       }
       setUser(null);
     } finally {
       console.log('🏁 fetchUserProfile finally block - setting loading to false');
+      console.log('🏁 Setting fetchingProfile to false');
+      console.log('🏁 Setting currentUserId to null');
       setLoading(false);
       setFetchingProfile(false);
       setCurrentUserId(null);
+      console.log('🏁 fetchUserProfile cleanup complete');
     }
   };
 
