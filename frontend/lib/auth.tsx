@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useContext, useEffect, useState } from 'react';
-import { User, UserProfile, supabase } from './supabase';
+import { User, UserProfile, supabase, createFreshSupabaseClient } from './supabase';
 import type { Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -166,11 +166,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       console.log('✅ User ID matches, proceeding to profile query...');
       console.log('📡 Executing profile query for user:', userId);
-      const { data: profile, error } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
+      
+      // Create a fresh Supabase client for this query to avoid hanging
+      const freshClient = createFreshSupabaseClient();
+      
+      // Retry mechanism for profile query with fresh client
+      let profile, error;
+      let retryCount = 0;
+      const maxRetries = 3;
+      
+      while (retryCount < maxRetries) {
+        try {
+          console.log(`📡 Profile query attempt ${retryCount + 1}/${maxRetries} with fresh client`);
+          
+          const profilePromise = freshClient
+            .from('user_profiles')
+            .select('*')
+            .eq('id', userId)
+            .single();
+          
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Profile query timeout')), 3000)
+          );
+          
+          const result = await Promise.race([profilePromise, timeoutPromise]) as any;
+          profile = result.data;
+          error = result.error;
+          console.log('✅ Profile query succeeded on attempt', retryCount + 1);
+          break;
+        } catch (err: any) {
+          console.log(`❌ Profile query attempt ${retryCount + 1} failed:`, err.message);
+          retryCount++;
+          if (retryCount < maxRetries) {
+            console.log(`🔄 Retrying in 1 second...`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } else {
+            console.log('❌ All profile query attempts failed');
+            error = err;
+          }
+        }
+      }
 
       console.log('✅ Supabase query completed!');
       console.log('Profile query result:', { profile, error });
