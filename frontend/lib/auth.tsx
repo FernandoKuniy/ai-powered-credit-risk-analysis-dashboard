@@ -126,7 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signUp = async (email: string, password: string, fullName?: string) => {
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -136,7 +136,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
     });
     
-    // Handle specific error cases
+    // Handle explicit errors (when email confirmation is disabled)
     if (error) {
       // Check for duplicate email error
       if (error.message?.includes('User already registered') || 
@@ -162,9 +162,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         };
       }
+      
+      return { error };
     }
     
-    return { error };
+    // Handle implicit duplicates (when email confirmation is enabled)
+    // Supabase returns a user object but no session for existing emails
+    if (data.user && !data.session) {
+      return { 
+        error: {
+          message: 'Please check your email for a confirmation link, or try signing in if you already have an account.',
+          code: 'CHECK_EMAIL_OR_SIGNIN'
+        }
+      };
+    }
+    
+    // Successful signup - user and session both exist
+    return { error: null };
   };
 
   const signOut = async () => {

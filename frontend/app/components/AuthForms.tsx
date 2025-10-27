@@ -84,8 +84,8 @@ export function SignUpForm({ onSwitchToLogin }: { onSwitchToLogin?: () => void }
     if (error) {
       setError(error.message);
       
-      // Show option to switch to login if it's a duplicate email
-      if (error.code === 'DUPLICATE_EMAIL') {
+      // Show option to switch to login for duplicate email cases
+      if (error.code === 'DUPLICATE_EMAIL' || error.code === 'CHECK_EMAIL_OR_SIGNIN') {
         setShowSwitchToLogin(true);
       }
     } else {
@@ -154,7 +154,7 @@ export function SignUpForm({ onSwitchToLogin }: { onSwitchToLogin?: () => void }
       
       {showSwitchToLogin && onSwitchToLogin && (
         <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-3 mb-4">
-          <p className="text-white/90 text-sm mb-2">Already have an account?</p>
+          <p className="text-white/90 text-sm mb-2">Need to access your account?</p>
           <button
             type="button"
             onClick={onSwitchToLogin}
