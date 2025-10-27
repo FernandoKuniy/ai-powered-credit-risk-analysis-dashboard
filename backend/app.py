@@ -147,7 +147,7 @@ def health():
     return {
         "status": "ok", 
         "model_loaded": _loaded, 
-        "supabase_connected": SUPABASE_URL is not None and SUPABASE_ANON_KEY is not None,
+        "supabase_connected": SUPABASE_URL is not None and SUPABASE_KEY is not None,
         "allowed_origins": ALLOWED_ORIGINS
     }
 
