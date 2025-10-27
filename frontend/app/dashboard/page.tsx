@@ -84,6 +84,32 @@ export default function DashboardPage() {
 
   if (!portfolio) return null;
 
+  // Show empty state if no applications
+  if (portfolio.total_applications === 0) {
+    return (
+      <ProtectedRoute>
+        <main>
+          <Navigation />
+          <div className="card">
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">📊</div>
+              <h2 className="text-2xl font-semibold mb-4">No Applications Yet</h2>
+              <p className="text-white/70 mb-6">
+                You haven't submitted any loan applications yet. Get started by scoring your first application!
+              </p>
+              <a 
+                href="/score" 
+                className="btn inline-block"
+              >
+                Score Your First Application
+              </a>
+            </div>
+          </div>
+        </main>
+      </ProtectedRoute>
+    );
+  }
+
   // Prepare data for charts
   const gradeData = Object.entries(portfolio.grade_distribution).map(([grade, count]) => ({
     grade,
