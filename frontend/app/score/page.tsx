@@ -46,47 +46,91 @@ export default function ScorePage() {
         <Navigation />
         <div className="card">
           <h2 className="text-xl font-semibold mb-4">Scoring Form</h2>
-        <form className="grid gap-4 md:grid-cols-2" onSubmit={onSubmit}>
+        <form className="grid gap-6 md:grid-cols-2" onSubmit={onSubmit}>
           {/* numeric fields */}
-          <label className="block"><span className="label flex items-center gap-2">Loan Amount <InfoIcon explanation="The total amount of money the borrower is requesting for the loan." /></span>
+          <label className="block space-y-2">
+            <span className="label flex items-center gap-3">
+              Loan Amount 
+              <InfoIcon explanation="The total amount of money the borrower is requesting for the loan." />
+            </span>
             <input name="loan_amnt" type="number" className="input" defaultValue={10000} required />
           </label>
-          <label className="block"><span className="label flex items-center gap-2">Annual Income <InfoIcon explanation="The borrower's total annual income from all sources before taxes." /></span>
+          <label className="block space-y-2">
+            <span className="label flex items-center gap-3">
+              Annual Income 
+              <InfoIcon explanation="The borrower's total annual income from all sources before taxes." />
+            </span>
             <input name="annual_inc" type="number" className="input" defaultValue={80000} required />
           </label>
-          <label className="block"><span className="label flex items-center gap-2">DTI <InfoIcon explanation="Debt-to-Income ratio: Monthly debt payments divided by monthly income, expressed as a percentage." /></span>
+          <label className="block space-y-2">
+            <span className="label flex items-center gap-3">
+              DTI 
+              <InfoIcon explanation="Debt-to-Income ratio: Monthly debt payments divided by monthly income, expressed as a percentage." />
+            </span>
             <input name="dti" type="number" step="0.01" className="input" defaultValue={12.5} required />
           </label>
-          <label className="block"><span className="label flex items-center gap-2">Employment Length (years) <InfoIcon explanation="Number of years the borrower has been employed at their current job." /></span>
+          <label className="block space-y-2">
+            <span className="label flex items-center gap-3">
+              Employment Length (years) 
+              <InfoIcon explanation="Number of years the borrower has been employed at their current job." />
+            </span>
             <input name="emp_length" type="number" className="input" defaultValue={4} required />
           </label>
-          <label className="block"><span className="label flex items-center gap-2">Revolving Utilization <InfoIcon explanation="Percentage of available revolving credit that is currently being used (credit card balances vs limits)." /></span>
+          <label className="block space-y-2">
+            <span className="label flex items-center gap-3">
+              Revolving Utilization 
+              <InfoIcon explanation="Percentage of available revolving credit that is currently being used (credit card balances vs limits)." />
+            </span>
             <input name="revol_util" type="number" step="0.1" className="input" defaultValue={35} required />
           </label>
-          <label className="block"><span className="label flex items-center gap-2">FICO <InfoIcon explanation="FICO credit score ranging from 300-850, indicating creditworthiness based on credit history." /></span>
+          <label className="block space-y-2">
+            <span className="label flex items-center gap-3">
+              FICO 
+              <InfoIcon explanation="FICO credit score ranging from 300-850, indicating creditworthiness based on credit history." />
+            </span>
             <input name="fico" type="number" className="input" defaultValue={720} required />
           </label>
 
           {/* categorical fields */}
-          <label className="block"><span className="label flex items-center gap-2">Grade <InfoIcon explanation="Loan grade assigned by the lender (A=best, G=worst) based on credit risk assessment." /></span>
+          <label className="block space-y-2">
+            <span className="label flex items-center gap-3">
+              Grade 
+              <InfoIcon explanation="Loan grade assigned by the lender (A=best, G=worst) based on credit risk assessment." />
+            </span>
             <select name="grade" className="input" defaultValue="B">
               {"ABCDEFG".split("").map((g) => <option key={g}>{g}</option>)}
             </select>
           </label>
-          <label className="block"><span className="label flex items-center gap-2">Term <InfoIcon explanation="The length of time over which the loan will be repaid (36 or 60 months)." /></span>
+          <label className="block space-y-2">
+            <span className="label flex items-center gap-3">
+              Term 
+              <InfoIcon explanation="The length of time over which the loan will be repaid (36 or 60 months)." />
+            </span>
             <select name="term" className="input" defaultValue="36 months">
               <option>36 months</option><option>60 months</option>
             </select>
           </label>
-          <label className="block md:col-span-2"><span className="label flex items-center gap-2">Purpose <InfoIcon explanation="The intended use of the loan funds (e.g., debt_consolidation, credit_card, home_improvement, etc.)." /></span>
+          <label className="block md:col-span-2 space-y-2">
+            <span className="label flex items-center gap-3">
+              Purpose 
+              <InfoIcon explanation="The intended use of the loan funds (e.g., debt_consolidation, credit_card, home_improvement, etc.)." />
+            </span>
             <input name="purpose" className="input" defaultValue="debt_consolidation" />
           </label>
-          <label className="block"><span className="label flex items-center gap-2">Home Ownership <InfoIcon explanation="The borrower's housing status: RENT, MORTGAGE, OWN (no mortgage), or OTHER." /></span>
+          <label className="block space-y-2">
+            <span className="label flex items-center gap-3">
+              Home Ownership 
+              <InfoIcon explanation="The borrower's housing status: RENT, MORTGAGE, OWN (no mortgage), or OTHER." />
+            </span>
             <select name="home_ownership" className="input" defaultValue="RENT">
               <option>RENT</option><option>MORTGAGE</option><option>OWN</option><option>OTHER</option>
             </select>
           </label>
-          <label className="block"><span className="label flex items-center gap-2">State <InfoIcon explanation="The two-letter state code where the borrower resides (e.g., MA for Massachusetts)." /></span>
+          <label className="block space-y-2">
+            <span className="label flex items-center gap-3">
+              State 
+              <InfoIcon explanation="The two-letter state code where the borrower resides (e.g., MA for Massachusetts)." />
+            </span>
             <input name="state" className="input" defaultValue="MA" />
           </label>
 

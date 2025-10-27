@@ -20,7 +20,7 @@ export default function InfoIcon({ explanation, className = "" }: InfoIconProps)
       </div>
       
       {isVisible && (
-        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg shadow-lg border border-white/10 z-50 max-w-xs info-tooltip">
+        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-4 py-3 bg-gray-900 text-white text-sm rounded-lg shadow-lg border border-white/10 z-50 w-80 info-tooltip">
           <div className="whitespace-normal">
             {explanation}
           </div>
