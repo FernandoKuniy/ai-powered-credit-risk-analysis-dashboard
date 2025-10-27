@@ -115,7 +115,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [isHydrated]);
+  }, [isHydrated, user]);
 
   const fetchUserProfile = async (userId: string) => {
     console.log('🚀 fetchUserProfile called with userId:', userId);
