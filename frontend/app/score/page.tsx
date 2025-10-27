@@ -31,7 +31,6 @@ export default function ScorePage() {
     try {
       const r = await scoreApplication(payload, session?.access_token);
       setResult(r);
-      console.log("score:", r);
     } catch (err: any) {
       setError(err?.message || "Request failed");
       console.error(err);

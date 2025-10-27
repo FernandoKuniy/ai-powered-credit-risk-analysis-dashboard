@@ -16,15 +16,9 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const { session } = useAuth();
 
-  console.log('📊 Dashboard render - session exists:', !!session, 'access_token exists:', !!session?.access_token, 'loading:', loading, 'portfolio:', !!portfolio);
-
   useEffect(() => {
-    console.log('📊 Dashboard useEffect - session exists:', !!session, 'access_token exists:', !!session?.access_token);
     if (session?.access_token) {
-      console.log('📊 Access token available, loading portfolio...');
       loadPortfolio();
-    } else {
-      console.log('📊 No access token available, skipping portfolio load');
     }
   }, [session?.access_token]);
 
@@ -35,24 +29,18 @@ export default function DashboardPage() {
   }, [threshold, portfolio]);
 
   async function loadPortfolio() {
-    console.log('📊 loadPortfolio called - session exists:', !!session, 'access_token exists:', !!session?.access_token);
-    
     if (!session?.access_token) {
-      console.log('📊 No access token available, skipping portfolio load');
       return;
     }
     
     try {
-      console.log('📊 Starting portfolio load with token:', session.access_token.substring(0, 20) + '...');
       setLoading(true);
       const data = await getPortfolio(session.access_token);
-      console.log('📊 Portfolio data loaded successfully:', data);
       setPortfolio(data);
     } catch (err: any) {
-      console.error('📊 Portfolio load failed:', err);
+      console.error('Portfolio load failed:', err);
       setError(err?.message || "Failed to load portfolio");
     } finally {
-      console.log('📊 Portfolio load complete, setting loading to false');
       setLoading(false);
     }
   }
