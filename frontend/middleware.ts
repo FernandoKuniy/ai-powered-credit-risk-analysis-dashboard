@@ -2,11 +2,11 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  // Check if DEV_MODE is enabled
-  const isDevMode = process.env.DEV_MODE === 'true'
+  // Check if NEXT_PUBLIC_DEV_MODE is enabled
+  const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true'
   
   if (isDevMode) {
-    // In DEV_MODE, allow all routes to pass through without authentication checks
+    // In NEXT_PUBLIC_DEV_MODE, allow all routes to pass through without authentication checks
     return NextResponse.next({
       request: {
         headers: request.headers,

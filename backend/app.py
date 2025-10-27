@@ -14,8 +14,7 @@ load_dotenv("../.env.local")
 app = FastAPI()
 
 # --- CORS: allow local dev + configurable prod origins ---
-DEFAULT_ORIGINS = ["http://localhost:3000"]
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", ",".join(DEFAULT_ORIGINS)).split(",")
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS").split(",")
 ALLOWED_ORIGINS = [o.strip() for o in ALLOWED_ORIGINS if o.strip()]
 
 app.add_middleware(
