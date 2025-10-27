@@ -24,6 +24,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const fetchingProfileRef = useRef(false);
   const currentUserIdRef = useRef<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const initialSessionProcessedRef = useRef(false);
 
   console.log('🔍 AuthProvider render - loading:', loading, 'user:', user?.id, 'session:', !!session, 'fetchingProfile:', fetchingProfileRef.current, 'currentUserId:', currentUserIdRef.current);
 
@@ -67,12 +68,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAuthInitialized(true);
         
         if (session?.user) {
-          console.log('👤 User found in session:', session.user.id);
-          await fetchUserProfile(session.user.id);
+          console.log('👤 User found in initial session:', session.user.id, '- letting auth state change handle profile fetch');
+          // Don't call fetchUserProfile here - let the auth state change listener handle it
+          // This prevents duplicate profile fetches
         } else {
-          console.log('❌ No user in session');
+          console.log('❌ No user in initial session');
           setUser(null);
           setLoading(false);
+          // Mark initial session as processed since there's no user
+          initialSessionProcessedRef.current = true;
         }
       } catch (error) {
         console.error('❌ Initial session check failed:', error);
@@ -80,6 +84,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
           setLoading(false);
           setAuthInitialized(true);
+          // Mark initial session as processed even on error
+          initialSessionProcessedRef.current = true;
         }
       }
     };
@@ -95,6 +101,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Skip INITIAL_SESSION events since we handle that separately
       if (event === 'INITIAL_SESSION') {
         console.log('⏭️ Skipping INITIAL_SESSION event');
+        return;
+      }
+      
+      // For SIGNED_IN events, check if this is the initial session we already processed
+      if (event === 'SIGNED_IN' && !initialSessionProcessedRef.current) {
+        console.log('🔄 Processing initial SIGNED_IN event');
+        initialSessionProcessedRef.current = true;
+      } else if (event === 'SIGNED_IN' && initialSessionProcessedRef.current) {
+        console.log('⏭️ Skipping duplicate SIGNED_IN event');
         return;
       }
       
