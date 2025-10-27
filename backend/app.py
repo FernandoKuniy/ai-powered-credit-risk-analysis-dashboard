@@ -32,11 +32,8 @@ if not API_KEY:
     raise ValueError("API_KEY environment variable is required")
 
 def require_key(x_api_key: str | None = Header(default=None)):
-    print(f"🔑 API Key check - provided: {bool(x_api_key)}, expected: {bool(API_KEY)}")
     if not x_api_key or x_api_key != API_KEY:
-        print(f"❌ API Key mismatch - provided: {x_api_key}, expected: {API_KEY}")
         raise HTTPException(status_code=401, detail="Unauthorized")
-    print("✅ API Key verified")
 
 THRESHOLD = 0.25  # approval cutoff on PD
 
@@ -52,10 +49,7 @@ if SUPABASE_URL and SUPABASE_KEY:
 # JWT verification function
 def verify_supabase_jwt(token: str) -> dict | None:
     """Verify Supabase JWT token and return payload if valid"""
-    print(f"🔐 JWT verification - token length: {len(token)}, secret configured: {bool(SUPABASE_JWT_SECRET)}")
-    
     if not SUPABASE_JWT_SECRET:
-        print("⚠️ Warning: SUPABASE_JWT_SECRET not configured, JWT verification disabled")
         return None
     
     try:
@@ -66,36 +60,22 @@ def verify_supabase_jwt(token: str) -> dict | None:
             algorithms=["HS256"],
             audience="authenticated"
         )
-        print(f"✅ JWT verified successfully - user: {payload.get('sub')}")
         return payload
-    except jwt.ExpiredSignatureError:
-        print("❌ JWT token has expired")
-        return None
-    except jwt.InvalidTokenError as e:
-        print(f"❌ Invalid JWT token: {e}")
-        return None
-    except Exception as e:
-        print(f"❌ JWT verification error: {e}")
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, Exception):
         return None
 
 def get_user_id_from_token(authorization: str | None) -> tuple[str | None, bool]:
     """Extract user ID from JWT token and return (user_id, is_valid_token)"""
-    print(f"🔍 Token extraction - authorization header: {authorization[:50] if authorization else None}...")
-    
     if not authorization or not authorization.startswith("Bearer "):
-        print("❌ No Bearer token found in authorization header")
         return None, False
     
     token = authorization.split(" ")[1]
-    print(f"🔍 Extracted token: {token[:20]}...")
     payload = verify_supabase_jwt(token)
     
     if payload:
         user_id = payload.get("sub")
-        print(f"✅ User ID extracted: {user_id}")
         return user_id, True
     else:
-        print("❌ JWT verification failed")
         return None, False
 
 # ---- Load artifacts at startup ----
@@ -198,22 +178,18 @@ def score(req: ScoreRequest, authorization: str | None = Header(default=None)):
                 application_data["user_id"] = user_id
                 
             supabase.table("applications").insert(application_data).execute()
-        except Exception as e:
-            print(f"Warning: Failed to save to Supabase: {e}")
+        except Exception:
+            pass  # Silently fail if Supabase save fails
     
     return ScoreResponse(pd=pd_hat, risk_grade=risk, decision=decision, top_features=None)
 
 @app.get("/portfolio", dependencies=[Depends(require_key)])
 def portfolio(authorization: str | None = Header(default=None)):
-    print(f"📊 Portfolio endpoint called - authorization: {authorization[:50] if authorization else None}...")
-    
     if not supabase:
-        print("❌ Supabase not connected")
         return {"error": "Supabase not connected"}
     
     # Extract user ID from Supabase JWT token
     user_id, is_valid_token = get_user_id_from_token(authorization)
-    print(f"📊 Portfolio - user_id: {user_id}, is_valid_token: {is_valid_token}")
     
     try:
         # Build query with optional user filtering
