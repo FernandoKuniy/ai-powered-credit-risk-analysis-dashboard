@@ -81,22 +81,13 @@ CREATE POLICY "Users can view own profile" ON user_profiles
 CREATE POLICY "Users can update own profile" ON user_profiles
     FOR UPDATE USING (auth.uid() = id);
 
--- Loan officers can view applications they created
-CREATE POLICY "Loan officers can view own applications" ON applications
+-- Users can view their own applications (simplified policy)
+CREATE POLICY "Users can view own applications" ON applications
     FOR SELECT USING (
         auth.uid() = user_id AND 
         EXISTS (
             SELECT 1 FROM user_profiles 
-            WHERE id = auth.uid() AND role = 'loan_officer'
-        )
-    );
-
--- Risk managers can view all applications
-CREATE POLICY "Risk managers can view all applications" ON applications
-    FOR SELECT USING (
-        EXISTS (
-            SELECT 1 FROM user_profiles 
-            WHERE id = auth.uid() AND role = 'risk_manager'
+            WHERE id = auth.uid()
         )
     );
 
