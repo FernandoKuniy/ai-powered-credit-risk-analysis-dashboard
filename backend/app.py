@@ -49,11 +49,12 @@ def get_supabase_client(user_jwt: str | None = None) -> Client | None:
     
     if user_jwt:
         # Create client with user's JWT for RLS enforcement
-        options = {
-            "headers": {
+        from supabase.lib.client_options import ClientOptions
+        options = ClientOptions(
+            headers={
                 "Authorization": f"Bearer {user_jwt}"
             }
-        }
+        )
         return create_client(SUPABASE_URL, SUPABASE_KEY, options)
     else:
         # Fallback to basic client (operations will fail if RLS requires auth)
