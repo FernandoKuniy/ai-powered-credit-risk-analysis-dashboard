@@ -19,6 +19,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileRetryTimeout, setProfileRetryTimeout] = useState<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     // Get initial session
@@ -46,10 +47,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      subscription.unsubscribe();
+      // Clean up any pending retry timeout
+      if (profileRetryTimeout) {
+        clearTimeout(profileRetryTimeout);
+      }
+    };
+  }, [profileRetryTimeout]);
 
-  const fetchUserProfile = async (userId: string) => {
+  const fetchUserProfile = async (userId: string, retryCount = 0) => {
+    const maxRetries = 5;
+    const baseDelay = 1000; // 1 second base delay
+    const maxDelay = 10000; // Maximum 10 seconds delay
+    
     try {
       const { data: profile, error } = await supabase
         .from('user_profiles')
@@ -58,6 +69,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .single();
 
       if (error) {
+        // If profile doesn't exist and we haven't exceeded retries, try again
+        if (error.code === 'PGRST116' && retryCount < maxRetries) {
+          const delay = Math.min(baseDelay * Math.pow(2, retryCount), maxDelay); // Exponential backoff with cap
+          console.log(`Profile not found for user ${userId}, retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`);
+          
+          const timeout = setTimeout(() => {
+            fetchUserProfile(userId, retryCount + 1);
+          }, delay);
+          
+          setProfileRetryTimeout(timeout);
+          return;
+        }
+        
+        // If we've exhausted retries, this might be an orphaned account
+        if (retryCount >= maxRetries) {
+          console.error(`Profile creation failed after ${maxRetries} retries for user ${userId}. Attempting to create orphaned profile.`);
+          // Try to create the profile manually for orphaned accounts
+          const email = session?.user?.email || '';
+          if (email) {
+            await createOrphanedProfile(userId, email);
+            return;
+          }
+        }
+        
+        console.error('Failed to fetch user profile:', error);
         setUser(null);
         setLoading(false);
         return;
@@ -69,12 +105,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: session?.user?.email || '',
           profile,
         });
+        setLoading(false);
       } else {
         setUser(null);
+        setLoading(false);
       }
     } catch (error) {
+      console.error('Error fetching user profile:', error);
       setUser(null);
-    } finally {
       setLoading(false);
     }
   };
@@ -146,6 +184,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     return { error };
+  };
+
+  const createOrphanedProfile = async (userId: string, email: string) => {
+    try {
+      const { error } = await supabase
+        .from('user_profiles')
+        .insert({
+          id: userId,
+          email: email,
+          full_name: email, // Use email as fallback
+          role: 'loan_officer'
+        });
+
+      if (!error) {
+        console.log('Successfully created orphaned profile for user:', userId);
+        await fetchUserProfile(userId);
+      } else {
+        console.error('Failed to create orphaned profile:', error);
+      }
+
+      return { error };
+    } catch (error) {
+      console.error('Error creating orphaned profile:', error);
+      return { error };
+    }
   };
 
   return (
