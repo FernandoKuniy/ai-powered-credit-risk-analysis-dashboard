@@ -41,10 +41,23 @@ THRESHOLD = 0.25  # approval cutoff on PD
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
-supabase: Client | None = None
 
-if SUPABASE_URL and SUPABASE_KEY:
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+def get_supabase_client(user_jwt: str | None = None) -> Client | None:
+    """Create a Supabase client with optional user JWT for RLS enforcement"""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return None
+    
+    if user_jwt:
+        # Create client with user's JWT for RLS enforcement
+        options = {
+            "headers": {
+                "Authorization": f"Bearer {user_jwt}"
+            }
+        }
+        return create_client(SUPABASE_URL, SUPABASE_KEY, options)
+    else:
+        # Fallback to basic client (operations will fail if RLS requires auth)
+        return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # JWT verification function
 def verify_supabase_jwt(token: str) -> dict | None:
@@ -133,7 +146,7 @@ def health():
     return {
         "status": "ok", 
         "model_loaded": _loaded, 
-        "supabase_connected": supabase is not None,
+        "supabase_connected": SUPABASE_URL is not None and SUPABASE_ANON_KEY is not None,
         "allowed_origins": ALLOWED_ORIGINS
     }
 
@@ -142,8 +155,10 @@ def score(req: ScoreRequest, authorization: str | None = Header(default=None)):
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded. Train or add backend/models/model.pkl.")
     
-    # Extract user ID from Supabase JWT token
-    user_id, is_valid_token = get_user_id_from_token(authorization)
+    # Extract user JWT from Authorization header
+    user_jwt = None
+    if authorization and authorization.startswith("Bearer "):
+        user_jwt = authorization.split(" ")[1]
     
     df = _to_dataframe(req)
     try:
@@ -154,6 +169,7 @@ def score(req: ScoreRequest, authorization: str | None = Header(default=None)):
     decision = "approve" if pd_hat < THRESHOLD else "review"
     
     # Save to Supabase if connected
+    supabase = get_supabase_client(user_jwt)
     if supabase:
         try:
             application_data = {
@@ -173,18 +189,32 @@ def score(req: ScoreRequest, authorization: str | None = Header(default=None)):
                 "decision": decision
             }
             
-            # Add user_id if available
-            if user_id:
-                application_data["user_id"] = user_id
+            # Add user_id if JWT is available and valid
+            if user_jwt:
+                user_id, is_valid_token = get_user_id_from_token(authorization)
+                if user_id:
+                    application_data["user_id"] = user_id
+                    
+            result = supabase.table("applications").insert(application_data).execute()
+            if hasattr(result, 'data') and not result.data:
+                raise Exception("Failed to insert application data")
                 
-            supabase.table("applications").insert(application_data).execute()
-        except Exception:
-            pass  # Silently fail if Supabase save fails
+        except Exception as e:
+            # Log the error but don't fail the entire request
+            print(f"Supabase insert error: {e}")
+            # Optionally raise HTTPException if you want to fail on DB errors:
+            # raise HTTPException(status_code=500, detail=f"Database error: {e}")
     
     return ScoreResponse(pd=pd_hat, risk_grade=risk, decision=decision, top_features=None)
 
 @app.get("/portfolio", dependencies=[Depends(require_key)])
 def portfolio(authorization: str | None = Header(default=None)):
+    # Extract user JWT from Authorization header
+    user_jwt = None
+    if authorization and authorization.startswith("Bearer "):
+        user_jwt = authorization.split(" ")[1]
+    
+    supabase = get_supabase_client(user_jwt)
     if not supabase:
         return {"error": "Supabase not connected"}
     
@@ -254,6 +284,12 @@ def portfolio(authorization: str | None = Header(default=None)):
 
 @app.get("/portfolio/simulate", dependencies=[Depends(require_key)])
 def simulate_portfolio(threshold: float = Query(0.25, ge=0.05, le=0.50), authorization: str | None = Header(default=None)):
+    # Extract user JWT from Authorization header
+    user_jwt = None
+    if authorization and authorization.startswith("Bearer "):
+        user_jwt = authorization.split(" ")[1]
+    
+    supabase = get_supabase_client(user_jwt)
     if not supabase:
         return {"error": "Supabase not connected"}
     
