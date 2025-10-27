@@ -8,7 +8,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
-  signUp: (email: string, password: string, fullName?: string) => Promise<{ error: any }>;
+  signUp: (email: string, password: string, fullName?: string) => Promise<{ error: any; isNewUser?: boolean }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<{ error: any }>;
 }
@@ -166,19 +166,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { error };
     }
     
-    // Handle implicit duplicates (when email confirmation is enabled)
-    // Supabase returns a user object but no session for existing emails
+    // Handle case where user exists but no session (email confirmation enabled)
+    // This happens for both new users (need confirmation) and existing users (duplicate)
     if (data.user && !data.session) {
-      return { 
-        error: {
-          message: 'Please check your email for a confirmation link, or try signing in if you already have an account.',
-          code: 'CHECK_EMAIL_OR_SIGNIN'
-        }
-      };
+      // Check if this is likely a duplicate by looking at user creation time
+      // If user was created more than 1 second ago, it's probably a duplicate
+      const userCreatedAt = new Date(data.user.created_at).getTime();
+      const now = Date.now();
+      const timeDiff = now - userCreatedAt;
+      
+      if (timeDiff > 1000) {
+        // This is likely an existing user trying to sign up again
+        return { 
+          error: {
+            message: 'Please check your email for a confirmation link, or try signing in if you already have an account.',
+            code: 'CHECK_EMAIL_OR_SIGNIN'
+          }
+        };
+      } else {
+        // This is a new user who needs email confirmation
+        return { error: null, isNewUser: true };
+      }
     }
     
-    // Successful signup - user and session both exist
-    return { error: null };
+    // Successful signup with immediate session (email confirmation disabled)
+    return { error: null, isNewUser: true };
   };
 
   const signOut = async () => {

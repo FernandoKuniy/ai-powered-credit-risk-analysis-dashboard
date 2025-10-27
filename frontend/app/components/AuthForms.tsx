@@ -70,6 +70,7 @@ export function SignUpForm({ onSwitchToLogin }: { onSwitchToLogin?: () => void }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [isNewUser, setIsNewUser] = useState(false);
   const [showSwitchToLogin, setShowSwitchToLogin] = useState(false);
   const { signUp } = useAuth();
 
@@ -78,8 +79,9 @@ export function SignUpForm({ onSwitchToLogin }: { onSwitchToLogin?: () => void }
     setLoading(true);
     setError(null);
     setShowSwitchToLogin(false);
+    setIsNewUser(false);
 
-    const { error } = await signUp(email, password, fullName);
+    const { error, isNewUser } = await signUp(email, password, fullName);
     
     if (error) {
       setError(error.message);
@@ -90,6 +92,7 @@ export function SignUpForm({ onSwitchToLogin }: { onSwitchToLogin?: () => void }
       }
     } else {
       setSuccess(true);
+      setIsNewUser(isNewUser || false);
     }
     
     setLoading(false);
@@ -98,19 +101,42 @@ export function SignUpForm({ onSwitchToLogin }: { onSwitchToLogin?: () => void }
   if (success) {
     return (
       <div className="text-center">
-        <div className="text-green-400 mb-4">✓ Account created successfully!</div>
-        <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4 mb-4">
-          <p className="text-white/90 font-medium mb-2">📧 Check your email</p>
-          <p className="text-white/70 text-sm">
-            We've sent a confirmation link to <strong>{email}</strong>
-          </p>
-          <p className="text-white/70 text-sm mt-2">
-            Click the link in your email to activate your account and start using the platform.
-          </p>
-        </div>
-        <p className="text-white/60 text-xs">
-          Didn't receive the email? Check your spam folder or try signing up again.
-        </p>
+        {isNewUser ? (
+          <>
+            <div className="text-green-400 mb-4">✓ Account created successfully!</div>
+            <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4 mb-4">
+              <p className="text-white/90 font-medium mb-2">📧 Check your email</p>
+              <p className="text-white/70 text-sm">
+                We've sent a confirmation link to <strong>{email}</strong>
+              </p>
+              <p className="text-white/70 text-sm mt-2">
+                Click the link in your email to activate your account and start using the platform.
+              </p>
+            </div>
+            <p className="text-white/60 text-xs">
+              Didn't receive the email? Check your spam folder or try signing up again.
+            </p>
+          </>
+        ) : (
+          <>
+            <div className="text-blue-400 mb-4">📧 Check your email</div>
+            <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4 mb-4">
+              <p className="text-white/90 font-medium mb-2">Account verification</p>
+              <p className="text-white/70 text-sm">
+                Please check your email for a confirmation link, or try signing in if you already have an account.
+              </p>
+            </div>
+            {onSwitchToLogin && (
+              <button
+                type="button"
+                onClick={onSwitchToLogin}
+                className="text-blue-400 hover:text-blue-300 text-sm underline"
+              >
+                Sign in instead
+              </button>
+            )}
+          </>
+        )}
       </div>
     );
   }
