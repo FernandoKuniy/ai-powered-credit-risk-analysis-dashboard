@@ -69,3 +69,19 @@ body {
 .label {
   @apply text-sm text-white/70;
 }
+
+/* Info icon tooltip styles */
+.info-tooltip {
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -10px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
