@@ -1,6 +1,6 @@
 "use client";
-import { createContext, useContext, useEffect, useState, useRef } from 'react';
-import { User, UserProfile, supabase, createFreshSupabaseClient } from './supabase';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { User, UserProfile, supabase } from './supabase';
 import type { Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -19,264 +19,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [authInitialized, setAuthInitialized] = useState(false);
-  const [isHydrated, setIsHydrated] = useState(false);
-  const fetchingProfileRef = useRef(false);
-  const currentUserIdRef = useRef<string | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const initialSessionProcessedRef = useRef(false);
-
-  console.log('🔍 AuthProvider render - loading:', loading, 'user:', user?.id, 'session:', !!session, 'fetchingProfile:', fetchingProfileRef.current, 'currentUserId:', currentUserIdRef.current);
-
-  // Handle hydration - defer all auth operations until after hydration
-  useEffect(() => {
-    console.log('🚀 Component mounted, setting hydrated to true');
-    setIsHydrated(true);
-  }, []);
 
   useEffect(() => {
-    console.log('🔄 Auth useEffect triggered - isHydrated:', isHydrated, 'user:', user?.id);
-    
-    // Only initialize auth after hydration is complete
-    if (!isHydrated) {
-      console.log('⏳ Waiting for hydration to complete...');
-      return;
-    }
-
-    let mounted = true;
-    
-    console.log('🔍 Starting auth initialization after hydration...');
-    
-    // Simplified auth initialization - no timeouts, let Supabase handle its own retries
-    const initializeAuth = async () => {
-      try {
-        console.log('🔍 Getting initial session...');
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (!mounted) return;
-        
-        if (error) {
-          console.error('❌ Session check error:', error);
-          setUser(null);
-          setLoading(false);
-          setAuthInitialized(true);
-          return;
-        }
-        
-        console.log('🔍 Initial session:', session);
-        setSession(session);
-        setAuthInitialized(true);
-        
-        if (session?.user) {
-          console.log('👤 User found in initial session:', session.user.id, '- letting auth state change handle profile fetch');
-          // Don't call fetchUserProfile here - let the auth state change listener handle it
-          // This prevents duplicate profile fetches
-        } else {
-          console.log('❌ No user in initial session');
-          setUser(null);
-          setLoading(false);
-          // Mark initial session as processed since there's no user
-          initialSessionProcessedRef.current = true;
-        }
-      } catch (error) {
-        console.error('❌ Initial session check failed:', error);
-        if (mounted) {
-          setUser(null);
-          setLoading(false);
-          setAuthInitialized(true);
-          // Mark initial session as processed even on error
-          initialSessionProcessedRef.current = true;
-        }
-      }
-    };
-
-    initializeAuth();
-
-    // Listen for auth changes - prevent duplicate triggers
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('🔄 Auth state change:', event, 'session exists:', !!session, 'user id:', session?.user?.id);
-      
-      // Skip INITIAL_SESSION events since we handle that separately
-      if (event === 'INITIAL_SESSION') {
-        console.log('⏭️ Skipping INITIAL_SESSION event');
-        return;
-      }
-      
-      // For SIGNED_IN events, check if this is the initial session we already processed
-      if (event === 'SIGNED_IN' && !initialSessionProcessedRef.current) {
-        console.log('🔄 Processing initial SIGNED_IN event');
-        initialSessionProcessedRef.current = true;
-      } else if (event === 'SIGNED_IN' && initialSessionProcessedRef.current) {
-        console.log('⏭️ Skipping duplicate SIGNED_IN event');
-        return;
-      }
-      
-      console.log('📝 Setting session state...');
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      
       if (session?.user) {
-        console.log('👤 User found in auth change:', session.user.id, 'current user:', user?.id);
-        // Always fetch profile on auth state change to ensure we have the latest data
-        console.log('🚀 About to call fetchUserProfile from auth state change...');
-        await fetchUserProfile(session.user.id);
-        console.log('✅ fetchUserProfile completed from auth state change');
+        fetchUserProfile(session.user.id);
       } else {
-        console.log('❌ No user in auth change, clearing state');
         setUser(null);
         setLoading(false);
-        currentUserIdRef.current = null;
       }
     });
 
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-      // Cancel any in-flight profile fetch
-      if (abortControllerRef.current) {
-        console.log('🛑 Cancelling in-flight profile fetch on unmount');
-        abortControllerRef.current.abort();
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state change:', event);
+      setSession(session);
+      
+      if (session?.user) {
+        fetchUserProfile(session.user.id);
+      } else {
+        setUser(null);
+        setLoading(false);
       }
-    };
-  }, [isHydrated]);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const fetchUserProfile = async (userId: string) => {
-    console.log('🚀 fetchUserProfile called with userId:', userId, 'fetchingProfile:', fetchingProfileRef.current, 'currentUserId:', currentUserIdRef.current, 'current user:', user?.id);
-    
-    // Strong debounce: prevent ALL concurrent calls
-    if (fetchingProfileRef.current || currentUserIdRef.current === userId) {
-      console.log('⏳ Already fetching profile or same user, skipping...');
-      return;
-    }
-    
-    // If we already have this user loaded, skip
-    if (user && user.id === userId) {
-      console.log('👤 User already loaded, skipping...');
-      setLoading(false);
-      return;
-    }
-    
-    // Cancel any existing request
-    if (abortControllerRef.current) {
-      console.log('🛑 Cancelling previous request');
-      abortControllerRef.current.abort();
-    }
-    
-    // Create new AbortController for this request
-    const abortController = new AbortController();
-    abortControllerRef.current = abortController;
-    
-    console.log('🔒 Setting fetchingProfile to true and currentUserId to:', userId);
-    fetchingProfileRef.current = true;
-    currentUserIdRef.current = userId;
-    
     try {
-      console.log('🔍 Step 1: Verifying current session...');
-      // First, verify the current session is still valid
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError || !session) {
-        console.log('❌ Session invalid or expired, signing out');
-        await supabase.auth.signOut();
-        setUser(null);
-        setLoading(false);
-        return;
-      }
-      
-      console.log('✅ Session verified, user id:', session.user.id);
-      
-      // Check if the session user matches the requested user ID
-      if (session.user.id !== userId) {
-        console.log('❌ Session user ID mismatch, signing out');
-        await supabase.auth.signOut();
-        setUser(null);
-        setLoading(false);
-        return;
-      }
-      
-      console.log('✅ User ID matches, proceeding to profile query...');
-      console.log('📡 Executing profile query for user:', userId);
-      
-      // Check if request was aborted
-      if (abortController.signal.aborted) {
-        console.log('🛑 Request aborted, stopping profile fetch');
-        return;
-      }
-      
-      // Simple profile query with AbortController
-      const profilePromise = supabase
+      const { data: profile, error } = await supabase
         .from('user_profiles')
         .select('*')
         .eq('id', userId)
         .single();
-      
-      // Create a timeout promise that aborts the request
-      const timeoutPromise = new Promise((_, reject) => {
-        const timeoutId = setTimeout(() => {
-          abortController.abort();
-          reject(new Error('Profile query timeout'));
-        }, 5000);
-        
-        abortController.signal.addEventListener('abort', () => {
-          clearTimeout(timeoutId);
-        });
-      });
-      
-      const result = await Promise.race([profilePromise, timeoutPromise]) as any;
-      const { data: profile, error } = result;
-
-      console.log('✅ Supabase query completed!');
-      console.log('Profile query result:', { profile, error });
 
       if (error) {
-        console.error('❌ Profile query error:', error);
-        // If profile doesn't exist, just set user to null
-        if (error.code === 'PGRST116') { // No rows returned
-          console.log('❌ User profile not found in database');
-          setUser(null);
-          setLoading(false);
-          return;
-        }
-        throw error;
-      }
-
-      if (!profile) {
-        console.error('❌ No profile found for user:', userId);
+        console.error('Profile fetch error:', error);
         setUser(null);
         setLoading(false);
         return;
       }
-      
-      console.log('✅ Profile found, setting user state...');
-      console.log('Profile data:', profile);
-      setUser({
-        id: userId,
-        email: session.user.email || '',
-        profile,
-      });
-      console.log('✅ User state set successfully');
-      
-    } catch (error) {
-      console.error('💥 Error fetching user profile:', error);
-      // If there's an error, sign out to clear any inconsistent state
-      try {
-        console.log('🔄 Attempting to sign out due to error...');
-        await supabase.auth.signOut();
-        console.log('✅ Sign out successful');
-      } catch (signOutError) {
-        console.error('❌ Error signing out:', signOutError);
+
+      if (profile) {
+        setUser({
+          id: userId,
+          email: session?.user?.email || '',
+          profile,
+        });
+      } else {
+        setUser(null);
       }
+    } catch (error) {
+      console.error('Profile fetch failed:', error);
       setUser(null);
     } finally {
-      console.log('🏁 fetchUserProfile finally block - setting loading to false');
-      console.log('🏁 Setting fetchingProfile to false');
-      console.log('🏁 Setting currentUserId to null');
       setLoading(false);
-      fetchingProfileRef.current = false;
-      currentUserIdRef.current = null;
-      abortControllerRef.current = null;
-      console.log('🏁 fetchUserProfile cleanup complete');
     }
   };
 
@@ -314,7 +116,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .eq('id', user.id);
 
     if (!error) {
-      // Refresh user data
       await fetchUserProfile(user.id);
     }
 
