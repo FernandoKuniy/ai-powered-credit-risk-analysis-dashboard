@@ -101,7 +101,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <ProtectedRoute requiredRole="risk_manager">
+    <ProtectedRoute>
       <main>
         <Navigation />
         <div className="grid gap-6">
