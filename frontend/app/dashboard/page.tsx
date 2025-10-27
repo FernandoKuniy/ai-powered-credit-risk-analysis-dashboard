@@ -17,8 +17,10 @@ export default function DashboardPage() {
   const { session } = useAuth();
 
   useEffect(() => {
-    loadPortfolio();
-  }, []);
+    if (session?.access_token) {
+      loadPortfolio();
+    }
+  }, [session?.access_token]);
 
   useEffect(() => {
     if (portfolio && portfolio.total_applications > 0) {
@@ -27,9 +29,14 @@ export default function DashboardPage() {
   }, [threshold, portfolio]);
 
   async function loadPortfolio() {
+    if (!session?.access_token) {
+      console.log('No access token available, skipping portfolio load');
+      return;
+    }
+    
     try {
       setLoading(true);
-      const data = await getPortfolio(session?.access_token);
+      const data = await getPortfolio(session.access_token);
       setPortfolio(data);
     } catch (err: any) {
       setError(err?.message || "Failed to load portfolio");

@@ -97,12 +97,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (session?.user) {
         console.log('👤 User found in auth change:', session.user.id);
-        // Only fetch if this is a different user or we don't have a user loaded
-        if (!user || user.id !== session.user.id) {
-          await fetchUserProfile(session.user.id);
-        } else {
-          console.log('👤 Same user already loaded, skipping profile fetch');
-        }
+        // Always fetch profile on auth state change to ensure we have the latest data
+        await fetchUserProfile(session.user.id);
       } else {
         console.log('❌ No user in auth change');
         setUser(null);
