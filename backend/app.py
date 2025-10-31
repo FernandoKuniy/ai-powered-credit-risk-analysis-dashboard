@@ -1,5 +1,6 @@
 # backend/app.py
 import os, json, joblib
+import logging
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Depends, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +11,10 @@ from schemas import ScoreRequest, ScoreResponse
 from supabase import create_client, Client
 from typing import Dict, Any
 from dotenv import load_dotenv
+
+# Configure logging
+logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env.local file
 load_dotenv("../.env.local")
@@ -54,6 +59,15 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 
+# Validate JWT secret configuration at startup
+if not SUPABASE_JWT_SECRET:
+    logger.warning(
+        "SUPABASE_JWT_SECRET is not configured. JWT verification will be disabled. "
+        "This is not recommended for production. User authentication will rely on Supabase RLS policies."
+    )
+else:
+    logger.info("SUPABASE_JWT_SECRET is configured. JWT verification is enabled.")
+
 def get_supabase_client(user_jwt: str | None = None) -> Client | None:
     """Create a Supabase client with optional user JWT for RLS enforcement"""
     if not SUPABASE_URL or not SUPABASE_KEY:
@@ -74,8 +88,15 @@ def get_supabase_client(user_jwt: str | None = None) -> Client | None:
 
 # JWT verification function
 def verify_supabase_jwt(token: str) -> dict | None:
-    """Verify Supabase JWT token and return payload if valid"""
+    """
+    Verify Supabase JWT token and return payload if valid.
+    
+    Returns:
+        dict: Token payload if valid
+        None: If verification fails (with appropriate logging)
+    """
     if not SUPABASE_JWT_SECRET:
+        logger.warning("JWT verification attempted but SUPABASE_JWT_SECRET is not configured")
         return None
     
     try:
@@ -87,21 +108,50 @@ def verify_supabase_jwt(token: str) -> dict | None:
             audience="authenticated"
         )
         return payload
-    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, Exception):
+    except jwt.ExpiredSignatureError:
+        logger.debug("JWT token has expired")
+        return None
+    except jwt.InvalidTokenError as e:
+        logger.warning(f"JWT token is invalid: {str(e)}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error during JWT verification: {str(e)}")
         return None
 
 def get_user_id_from_token(authorization: str | None) -> tuple[str | None, bool]:
-    """Extract user ID from JWT token and return (user_id, is_valid_token)"""
+    """
+    Extract user ID from JWT token and verify validity.
+    
+    Returns:
+        tuple: (user_id, is_valid_token)
+            - user_id: Extracted user ID if token is valid, None otherwise
+            - is_valid_token: True if token was successfully verified, False otherwise
+    """
     if not authorization or not authorization.startswith("Bearer "):
         return None, False
     
-    token = authorization.split(" ")[1]
-    payload = verify_supabase_jwt(token)
-    
-    if payload:
-        user_id = payload.get("sub")
-        return user_id, True
-    else:
+    try:
+        token = authorization.split(" ")[1]
+        
+        # If JWT secret is not configured, we cannot verify tokens
+        if not SUPABASE_JWT_SECRET:
+            logger.debug("Cannot verify JWT token: SUPABASE_JWT_SECRET not configured")
+            return None, False
+        
+        payload = verify_supabase_jwt(token)
+        
+        if payload:
+            user_id = payload.get("sub")
+            if user_id:
+                return user_id, True
+            else:
+                logger.warning("JWT payload missing 'sub' (user ID) field")
+                return None, False
+        else:
+            # Token verification failed (logged in verify_supabase_jwt)
+            return None, False
+    except Exception as e:
+        logger.error(f"Error extracting user ID from token: {str(e)}")
         return None, False
 
 # ---- Load artifacts at startup ----
@@ -206,8 +256,10 @@ def score(request: Request, req: ScoreRequest, authorization: str | None = Heade
             # Add user_id if JWT is available and valid
             if user_jwt:
                 user_id, is_valid_token = get_user_id_from_token(authorization)
-                if user_id:
+                if is_valid_token and user_id:
                     application_data["user_id"] = user_id
+                elif user_jwt and not is_valid_token:
+                    logger.warning("Invalid or unverifiable JWT token provided for application scoring")
                     
             result = supabase.table("applications").insert(application_data).execute()
             if hasattr(result, 'data') and not result.data:
@@ -236,10 +288,15 @@ def portfolio(request: Request, authorization: str | None = Header(default=None)
     # Extract user ID from Supabase JWT token
     user_id, is_valid_token = get_user_id_from_token(authorization)
     
+    # Log warning if token was provided but invalid (RLS will handle security)
+    if authorization and not is_valid_token:
+        logger.warning("Invalid or unverifiable JWT token provided for portfolio query. RLS policies will enforce access control.")
+    
     try:
         # Build query with optional user filtering
+        # Note: RLS policies in Supabase will enforce data isolation even if user_id is None
         query = supabase.table("applications").select("id", count="exact")
-        if user_id:
+        if is_valid_token and user_id:
             query = query.eq("user_id", user_id)
         
         total_result = query.execute()
@@ -257,7 +314,7 @@ def portfolio(request: Request, authorization: str | None = Header(default=None)
         
         # Get aggregated stats with user filtering
         stats_query = supabase.table("applications").select("pd, risk_grade, decision")
-        if user_id:
+        if is_valid_token and user_id:
             stats_query = stats_query.eq("user_id", user_id)
         
         stats_result = stats_query.execute()
@@ -280,7 +337,7 @@ def portfolio(request: Request, authorization: str | None = Header(default=None)
             "created_at, loan_amnt, annual_inc, pd, risk_grade, decision"
         ).order("created_at", desc=True).limit(20)
         
-        if user_id:
+        if is_valid_token and user_id:
             recent_query = recent_query.eq("user_id", user_id)
         
         recent_result = recent_query.execute()
@@ -312,10 +369,15 @@ def simulate_portfolio(request: Request, threshold: float = Query(0.25, ge=0.05,
     # Extract user ID from Supabase JWT token
     user_id, is_valid_token = get_user_id_from_token(authorization)
     
+    # Log warning if token was provided but invalid (RLS will handle security)
+    if authorization and not is_valid_token:
+        logger.warning("Invalid or unverifiable JWT token provided for portfolio simulation. RLS policies will enforce access control.")
+    
     try:
         # Get all applications with optional user filtering
+        # Note: RLS policies in Supabase will enforce data isolation even if user_id is None
         query = supabase.table("applications").select("pd, risk_grade")
-        if user_id:
+        if is_valid_token and user_id:
             query = query.eq("user_id", user_id)
         
         result = query.execute()
