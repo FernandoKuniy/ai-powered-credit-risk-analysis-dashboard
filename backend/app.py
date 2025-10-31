@@ -200,7 +200,11 @@ def _to_dataframe(req: ScoreRequest) -> pd.DataFrame:
     if feature_order:
         missing = [c for c in feature_order if c not in df.columns]
         if missing:
-            raise HTTPException(status_code=400, detail=f"Missing features: {missing}")
+            logger.error(f"Missing required features: {missing}")
+            raise HTTPException(
+                status_code=400, 
+                detail="Invalid request: missing required fields. Please check your input and try again."
+            )
         df = df[feature_order]
     return df
 
@@ -217,7 +221,11 @@ def health():
 @limiter.limit(SCORE_RATE_LIMIT)
 def score(request: Request, req: ScoreRequest, authorization: str | None = Header(default=None)):
     if model is None:
-        raise HTTPException(status_code=503, detail="Model not loaded. Train or add backend/models/model.pkl.")
+        logger.error("Scoring endpoint called but model is not loaded")
+        raise HTTPException(
+            status_code=503, 
+            detail="Scoring service is temporarily unavailable. Please try again later."
+        )
     
     # Extract user JWT from Authorization header
     user_jwt = None
@@ -228,7 +236,11 @@ def score(request: Request, req: ScoreRequest, authorization: str | None = Heade
     try:
         pd_hat = float(model.predict_proba(df)[:, 1][0])
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Inference error: {e}")
+        logger.error(f"ML model inference failed: {type(e).__name__}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, 
+            detail="An error occurred while processing your request. Please verify your input and try again."
+        )
     risk = _risk_grade(pd_hat)
     decision = "approve" if pd_hat < THRESHOLD else "review"
     
@@ -267,9 +279,9 @@ def score(request: Request, req: ScoreRequest, authorization: str | None = Heade
                 
         except Exception as e:
             # Log the error but don't fail the entire request
-            print(f"Supabase insert error: {e}")
+            logger.error(f"Failed to save application to database: {type(e).__name__}: {str(e)}", exc_info=True)
             # Optionally raise HTTPException if you want to fail on DB errors:
-            # raise HTTPException(status_code=500, detail=f"Database error: {e}")
+            # raise HTTPException(status_code=500, detail="Failed to save application. Please try again.")
     
     return ScoreResponse(pd=pd_hat, risk_grade=risk, decision=decision, top_features=None)
 
@@ -352,7 +364,11 @@ def portfolio(request: Request, authorization: str | None = Header(default=None)
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+        logger.error(f"Failed to retrieve portfolio data: {type(e).__name__}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, 
+            detail="An error occurred while retrieving portfolio data. Please try again later."
+        )
 
 @app.get("/portfolio/simulate", dependencies=[Depends(require_key)])
 @limiter.limit(PORTFOLIO_RATE_LIMIT)
@@ -408,4 +424,8 @@ def simulate_portfolio(request: Request, threshold: float = Query(0.25, ge=0.05,
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Simulation error: {e}")
+        logger.error(f"Portfolio simulation failed: {type(e).__name__}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, 
+            detail="An error occurred while running the simulation. Please try again later."
+        )
