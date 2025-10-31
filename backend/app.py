@@ -12,12 +12,20 @@ from supabase import create_client, Client
 from typing import Dict, Any
 from dotenv import load_dotenv
 
-# Configure logging
-logging.basicConfig(level=logging.WARNING)
-logger = logging.getLogger(__name__)
-
 # Load environment variables from .env.local file
 load_dotenv("../.env.local")
+
+# Configure logging
+# Allow log level to be configured via environment variable (default: WARNING for production)
+LOG_LEVEL = os.getenv("LOG_LEVEL", "WARNING").upper()
+log_level = getattr(logging, LOG_LEVEL, logging.WARNING)
+
+logging.basicConfig(
+    level=log_level,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
