@@ -29,9 +29,11 @@ export async function getPortfolio(accessToken?: string): Promise<PortfolioData>
     headers["Authorization"] = `Bearer ${accessToken}`;
   }
 
+  // Add cache-busting to ensure fresh data
   const res = await fetch("/api/portfolio", {
     method: "GET",
     headers,
+    cache: "no-store", // Prevent caching
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();

@@ -272,70 +272,64 @@ def _compute_portfolio_stats(supabase: Client, user_id: str | None = None) -> di
 
 def _get_or_compute_portfolio_stats(supabase: Client, user_id: str | None = None) -> dict:
     """
-    Get portfolio stats from cache if fresh, otherwise compute and update cache.
-    Uses row count comparison to determine cache freshness.
+    Get portfolio stats from database (automatically kept fresh by trigger).
+    Falls back to computing if stats don't exist yet.
+    
+    Since the database trigger automatically updates portfolio_stats when applications
+    are inserted, we can trust the database to have fresh data.
     
     Returns:
         dict with portfolio statistics
     """
-    # Get current actual count of applications
-    count_query = supabase.table("applications").select("id", count="exact")
-    if user_id:
-        count_query = count_query.eq("user_id", user_id)
-    count_result = count_query.execute()
-    actual_count = count_result.count or 0
-    
-    # Try to get cached stats
-    cached_stats = None
+    # Try to get stats from portfolio_stats table (should be fresh due to trigger)
     if user_id:
         try:
-            cached_result = supabase.table("portfolio_stats").select("*").eq("user_id", user_id).order("computed_at", desc=True).limit(1).execute()
+            cached_result = supabase.table("portfolio_stats").select("*").eq("user_id", user_id).limit(1).execute()
             if cached_result.data and len(cached_result.data) > 0:
-                cached_stats = cached_result.data[0]
+                stats_row = cached_result.data[0]
+                logger.debug(f"Using portfolio stats from database for user {user_id}")
+                return {
+                    "total_applications": stats_row["total_applications"],
+                    "avg_pd": float(stats_row["avg_pd"]),
+                    "approval_rate": float(stats_row["approval_rate"]),
+                    "default_rate": float(stats_row["default_rate"]),
+                    "grade_distribution": stats_row["grade_distribution"]
+                }
         except Exception as e:
-            logger.debug(f"Failed to fetch cached portfolio stats: {str(e)}")
+            logger.debug(f"Failed to fetch portfolio stats from database: {str(e)}")
     
-    # Check if cache is fresh by comparing total_applications count
-    if cached_stats and cached_stats.get("total_applications") == actual_count:
-        logger.debug(f"Using cached portfolio stats for user {user_id} (count: {actual_count})")
-        return {
-            "total_applications": cached_stats["total_applications"],
-            "avg_pd": float(cached_stats["avg_pd"]),
-            "approval_rate": float(cached_stats["approval_rate"]),
-            "default_rate": float(cached_stats["default_rate"]),
-            "grade_distribution": cached_stats["grade_distribution"]
-        }
-    
-    # Cache is stale or doesn't exist - compute fresh stats
-    logger.info(f"Computing fresh portfolio stats for user {user_id} (cache count: {cached_stats.get('total_applications') if cached_stats else 'none'}, actual count: {actual_count})")
+    # Stats don't exist yet (first time user or trigger hasn't run) - compute fresh
+    # This also handles the case where user_id is None
+    logger.info(f"Computing portfolio stats for user {user_id} (stats not found in database yet)")
     stats = _compute_portfolio_stats(supabase, user_id)
     
-    # Update cache if we have a user_id (can't cache without user context)
+    # For user_id=None case, we don't cache (no user context)
+    # For user_id with no stats, the trigger will create them on next application insert
+    # But we can also proactively create them here as a fallback using the database function
     if user_id:
         try:
-            stats_for_cache = {
-                "user_id": user_id,
-                "total_applications": stats["total_applications"],
-                "avg_pd": stats["avg_pd"],
-                "approval_rate": stats["approval_rate"],
-                "default_rate": stats["default_rate"],
-                "grade_distribution": stats["grade_distribution"],
-                "threshold": 0.25  # Default threshold
-            }
-            
-            # Try to update existing record first
-            update_result = supabase.table("portfolio_stats").update(stats_for_cache).eq("user_id", user_id).execute()
-            
-            # If no rows were updated, insert new record
-            if not update_result.data or len(update_result.data) == 0:
-                insert_result = supabase.table("portfolio_stats").insert(stats_for_cache).execute()
-                if insert_result.data:
-                    logger.debug(f"Successfully inserted portfolio stats cache for user {user_id}")
-            else:
-                logger.debug(f"Successfully updated portfolio stats cache for user {user_id}")
+            # Use the database RPC function to upsert stats (handles both insert and update)
+            supabase.rpc("upsert_portfolio_stats", {"p_user_id": user_id}).execute()
+            logger.debug(f"Created/updated portfolio stats for user {user_id} via RPC")
         except Exception as e:
-            logger.warning(f"Failed to update portfolio stats cache: {str(e)}")
-            # Don't fail the request if cache update fails
+            logger.debug(f"Failed to update portfolio stats via RPC (non-critical): {str(e)}")
+            # Fallback: try manual insert/update
+            try:
+                stats_for_cache = {
+                    "user_id": user_id,
+                    "total_applications": stats["total_applications"],
+                    "avg_pd": stats["avg_pd"],
+                    "approval_rate": stats["approval_rate"],
+                    "default_rate": stats["default_rate"],
+                    "grade_distribution": stats["grade_distribution"],
+                    "threshold": 0.25
+                }
+                update_result = supabase.table("portfolio_stats").update(stats_for_cache).eq("user_id", user_id).execute()
+                if not update_result.data or len(update_result.data) == 0:
+                    supabase.table("portfolio_stats").insert(stats_for_cache).execute()
+                logger.debug(f"Created/updated portfolio stats for user {user_id} via fallback")
+            except Exception as e2:
+                logger.debug(f"Fallback portfolio stats update also failed: {str(e2)}")
     
     return stats
 
