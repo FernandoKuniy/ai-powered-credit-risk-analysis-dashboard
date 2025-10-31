@@ -11,6 +11,7 @@ export default function ScorePage() {
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [simulatedThreshold, setSimulatedThreshold] = useState(0.25); // Default threshold matching backend
+  const [submittedGrade, setSubmittedGrade] = useState<string | null>(null); // Store the input grade for display
   const { session } = useAuth();
 
   const purposeOptions = [
@@ -35,12 +36,13 @@ export default function ScorePage() {
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
+    const inputGrade = String(form.get("grade"));
     const payload = {
       loan_amnt: Number(form.get("loan_amnt")),
       annual_inc: Number(form.get("annual_inc")),
       dti: Number(form.get("dti")),
       emp_length: Number(form.get("emp_length")),
-      grade: String(form.get("grade")),
+      grade: inputGrade,
       term: String(form.get("term")),
       purpose: String(form.get("purpose")),
       home_ownership: String(form.get("home_ownership")),
@@ -49,6 +51,7 @@ export default function ScorePage() {
       fico: Number(form.get("fico")),
     };
     setLoading(true); setError(null);
+    setSubmittedGrade(inputGrade); // Store the input grade for display
     try {
       const r = await scoreApplication(payload, session?.access_token);
       setResult(r);
@@ -116,8 +119,8 @@ export default function ScorePage() {
           {/* categorical fields */}
           <label className="block space-y-2">
             <span className="label flex items-center gap-3">
-              Grade 
-              <InfoIcon explanation="Loan grade assigned by the lender (A=best, G=worst) based on credit risk assessment." />
+              Lender-Assigned Grade 
+              <InfoIcon explanation="The initial loan grade assigned by the lender (A=best, G=worst). This is used as an input feature for the ML model to predict PD. The model will calculate its own risk grade from the predicted PD, which may differ." />
             </span>
             <select name="grade" className="input" defaultValue="B">
               {"ABCDEFG".split("").map((g) => <option key={g}>{g}</option>)}
@@ -181,6 +184,7 @@ export default function ScorePage() {
                 <div className="card">
                   <div className="text-white/60">Risk Grade</div>
                   <div className="text-2xl font-semibold">{result.risk_grade}</div>
+                  <div className="text-xs text-white/50 mt-1">Calculated from PD</div>
                 </div>
                 <div className="card">
                   <div className="text-white/60">Decision (Saved)</div>
@@ -188,6 +192,38 @@ export default function ScorePage() {
                   <div className="text-xs text-white/50 mt-1">Threshold: 25%</div>
                 </div>
               </div>
+              
+              {/* Grade comparison */}
+              {submittedGrade && submittedGrade !== result.risk_grade && (
+                <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-700/30 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <span className="text-yellow-400">ℹ️</span>
+                    <div className="text-sm text-white/80">
+                      <p className="font-medium mb-1">Note: Grade Difference</p>
+                      <p>
+                        You selected <span className="font-semibold">Lender-Assigned Grade: {submittedGrade}</span> as input, 
+                        but the model calculated <span className="font-semibold">Risk Grade: {result.risk_grade}</span> from 
+                        the predicted PD ({(result.pd * 100).toFixed(2)}%). The input grade is used as a feature to help predict PD, 
+                        while the risk grade is derived from the final PD value.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {submittedGrade && submittedGrade === result.risk_grade && (
+                <div className="mt-4 p-3 bg-green-900/20 border border-green-700/30 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <span className="text-green-400">✓</span>
+                    <div className="text-sm text-white/80">
+                      <p>
+                        The calculated <span className="font-semibold">Risk Grade: {result.risk_grade}</span> matches 
+                        your <span className="font-semibold">Lender-Assigned Grade: {submittedGrade}</span>.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Threshold simulation section */}
