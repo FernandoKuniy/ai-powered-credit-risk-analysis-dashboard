@@ -1,8 +1,11 @@
 # backend/app.py
 import os, json, joblib
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Depends, Header, Query
+from fastapi import FastAPI, HTTPException, Depends, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from schemas import ScoreRequest, ScoreResponse
 from supabase import create_client, Client
 from typing import Dict, Any
@@ -12,6 +15,16 @@ from dotenv import load_dotenv
 load_dotenv("../.env.local")
 
 app = FastAPI()
+
+# --- Rate Limiting ---
+# Initialize rate limiter (uses IP address for identification)
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Rate limit configuration (can be overridden via environment variables)
+SCORE_RATE_LIMIT = os.getenv("SCORE_RATE_LIMIT", "30/minute")
+PORTFOLIO_RATE_LIMIT = os.getenv("PORTFOLIO_RATE_LIMIT", "60/minute")
 
 # --- CORS: allow local dev + configurable prod origins ---
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS").split(",")
@@ -151,7 +164,8 @@ def health():
     }
 
 @app.post("/score", response_model=ScoreResponse, dependencies=[Depends(require_key)])
-def score(req: ScoreRequest, authorization: str | None = Header(default=None)):
+@limiter.limit(SCORE_RATE_LIMIT)
+def score(request: Request, req: ScoreRequest, authorization: str | None = Header(default=None)):
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded. Train or add backend/models/model.pkl.")
     
@@ -208,7 +222,8 @@ def score(req: ScoreRequest, authorization: str | None = Header(default=None)):
     return ScoreResponse(pd=pd_hat, risk_grade=risk, decision=decision, top_features=None)
 
 @app.get("/portfolio", dependencies=[Depends(require_key)])
-def portfolio(authorization: str | None = Header(default=None)):
+@limiter.limit(PORTFOLIO_RATE_LIMIT)
+def portfolio(request: Request, authorization: str | None = Header(default=None)):
     # Extract user JWT from Authorization header
     user_jwt = None
     if authorization and authorization.startswith("Bearer "):
@@ -283,7 +298,8 @@ def portfolio(authorization: str | None = Header(default=None)):
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 @app.get("/portfolio/simulate", dependencies=[Depends(require_key)])
-def simulate_portfolio(threshold: float = Query(0.25, ge=0.05, le=0.50), authorization: str | None = Header(default=None)):
+@limiter.limit(PORTFOLIO_RATE_LIMIT)
+def simulate_portfolio(request: Request, threshold: float = Query(0.25, ge=0.05, le=0.50), authorization: str | None = Header(default=None)):
     # Extract user JWT from Authorization header
     user_jwt = None
     if authorization and authorization.startswith("Bearer "):
