@@ -1,6 +1,15 @@
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
+    // Validate server-side environment variable (this route runs server-side only)
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+      return new Response(
+        JSON.stringify({ error: "Server configuration error: API_KEY not set" }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
     const body = await req.json();
   
     const baseUrl = process.env.NEXT_PUBLIC_API_URL!;
@@ -10,7 +19,7 @@ export async function POST(req: Request) {
     
     const headers: HeadersInit = {
       "Content-Type": "application/json",
-      "X-API-Key": process.env.API_KEY!, // stays server-side
+      "X-API-Key": apiKey, // Server-side only - never exposed to client
     };
     
     // Forward the Authorization header if present
