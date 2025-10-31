@@ -2,7 +2,7 @@ import { createBrowserClient } from '@supabase/ssr'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabaseRefreshToken = process.env.NEXT_PUBLIC_SUPABASE_REFRESH_TOKEN!
+const supabaseRefreshToken = process.env.NEXT_PUBLIC_DEV_REFRESH_TOKEN!
 
 // Check if NEXT_PUBLIC_DEV_MODE is enabled
 const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true'

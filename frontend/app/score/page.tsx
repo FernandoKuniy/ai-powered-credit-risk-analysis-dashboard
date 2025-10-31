@@ -12,6 +12,25 @@ export default function ScorePage() {
   const [error, setError] = useState<string | null>(null);
   const { session } = useAuth();
 
+  const purposeOptions = [
+    "car",
+    "credit_card",
+    "debt_consolidation",
+    "home_improvement",
+    "house",
+    "major_purchase",
+    "medical",
+    "moving",
+    "other",
+    "renewable_energy",
+    "small_business",
+    "vacation",
+  ];
+
+  const formatPurposeLabel = (value: string) => {
+    return value.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+  };
+
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
@@ -113,9 +132,15 @@ export default function ScorePage() {
           <label className="block md:col-span-2 space-y-2">
             <span className="label flex items-center gap-3">
               Purpose 
-              <InfoIcon explanation="The intended use of the loan funds (e.g., debt_consolidation, credit_card, home_improvement, etc.)." />
+              <InfoIcon explanation="The intended use of the loan funds (e.g., debt consolidation, credit card, home improvement, etc.)." />
             </span>
-            <input name="purpose" className="input" defaultValue="debt_consolidation" />
+            <select name="purpose" className="input" defaultValue="debt_consolidation">
+              {purposeOptions.map((purpose) => (
+                <option key={purpose} value={purpose}>
+                  {formatPurposeLabel(purpose)}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="block space-y-2">
             <span className="label flex items-center gap-3">
