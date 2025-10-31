@@ -284,7 +284,8 @@ def _get_or_compute_portfolio_stats(supabase: Client, user_id: str | None = None
     # Try to get stats from portfolio_stats table (should be fresh due to trigger)
     if user_id:
         try:
-            cached_result = supabase.table("portfolio_stats").select("*").eq("user_id", user_id).limit(1).execute()
+            # Get the stats row, ordered by computed_at to ensure we get the latest
+            cached_result = supabase.table("portfolio_stats").select("*").eq("user_id", user_id).order("computed_at", desc=True).limit(1).execute()
             if cached_result.data and len(cached_result.data) > 0:
                 stats_row = cached_result.data[0]
                 logger.debug(f"Using portfolio stats from database for user {user_id}")
