@@ -204,9 +204,12 @@ export default function DashboardPage() {
           <h3 className="text-lg font-semibold mb-4">Policy Simulator</h3>
           <div className="grid gap-6 md:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium mb-2">
-                Approval Threshold: {(threshold * 100).toFixed(1)}%
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm text-white/70">
+                  Approval Threshold: <span className="font-semibold text-white">{(threshold * 100).toFixed(0)}%</span>
+                </label>
+                <span className="text-xs text-white/50">Range: 5% - 50%</span>
+              </div>
               <input
                 type="range"
                 min="0.05"
@@ -214,9 +217,9 @@ export default function DashboardPage() {
                 step="0.01"
                 value={threshold}
                 onChange={(e) => setThreshold(parseFloat(e.target.value))}
-                className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+                className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
               />
-              <div className="flex justify-between text-xs text-white/60 mt-1">
+              <div className="flex justify-between text-xs text-white/50 mt-1">
                 <span>5%</span>
                 <span>50%</span>
               </div>
