@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { getPortfolio, simulatePortfolio, PortfolioData, SimulationData } from "../../lib/portfolio";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts";
 import Navigation from "../components/Navigation";
@@ -15,12 +16,14 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { session } = useAuth();
+  const pathname = usePathname();
 
+  // Reload portfolio when navigating to this page (handles production caching)
   useEffect(() => {
-    if (session?.access_token) {
+    if (session?.access_token && pathname === "/dashboard") {
       loadPortfolio();
     }
-  }, [session?.access_token]);
+  }, [session?.access_token, pathname]);
 
   useEffect(() => {
     if (portfolio && portfolio.total_applications > 0) {

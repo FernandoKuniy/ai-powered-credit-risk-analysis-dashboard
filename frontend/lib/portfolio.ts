@@ -29,11 +29,13 @@ export async function getPortfolio(accessToken?: string): Promise<PortfolioData>
     headers["Authorization"] = `Bearer ${accessToken}`;
   }
 
-  // Add cache-busting to ensure fresh data
-  const res = await fetch("/api/portfolio", {
+  // Add cache-busting to ensure fresh data (especially important in production)
+  // Using timestamp query param to bypass any proxy/CDN caching
+  const timestamp = Date.now();
+  const res = await fetch(`/api/portfolio?t=${timestamp}`, {
     method: "GET",
     headers,
-    cache: "no-store", // Prevent caching
+    cache: "no-store", // Prevent browser caching
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
