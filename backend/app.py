@@ -192,11 +192,41 @@ def _risk_grade(pd_val: float) -> str:
 
 def _compute_portfolio_stats(supabase: Client, user_id: str | None = None) -> dict:
     """
-    Compute portfolio statistics from applications table.
+    Compute portfolio statistics using SQL aggregation (fast and efficient).
+    Calls PostgreSQL function that performs aggregations in the database.
     
     Returns:
         dict with total_applications, avg_pd, approval_rate, default_rate, grade_distribution
     """
+    try:
+        # Call PostgreSQL function for SQL-based aggregation
+        # This is much faster than fetching all rows and computing in Python
+        result = supabase.rpc(
+            "compute_portfolio_stats",
+            {"p_user_id": user_id}
+        ).execute()
+        
+        if result.data:
+            stats = result.data[0]
+            # Ensure grade_distribution has all grades (fill missing with 0)
+            grade_dist = stats.get("grade_distribution", {})
+            for grade in "ABCDEFG":
+                if grade not in grade_dist:
+                    grade_dist[grade] = 0
+            
+            return {
+                "total_applications": stats.get("total_applications", 0),
+                "avg_pd": float(stats.get("avg_pd", 0.0)),
+                "approval_rate": float(stats.get("approval_rate", 0.0)),
+                "default_rate": float(stats.get("default_rate", 0.0)),
+                "grade_distribution": grade_dist
+            }
+    except Exception as e:
+        logger.warning(f"SQL aggregation failed, falling back to Python computation: {str(e)}")
+        # Fallback to Python computation if SQL function fails
+        # This ensures backward compatibility during migration
+    
+    # Fallback: Python-based computation (original method)
     # Get total count
     count_query = supabase.table("applications").select("id", count="exact")
     if user_id:

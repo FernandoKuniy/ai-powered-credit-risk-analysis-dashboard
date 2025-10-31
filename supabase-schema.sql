@@ -114,3 +114,80 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Function to compute portfolio statistics using SQL aggregation
+CREATE OR REPLACE FUNCTION public.compute_portfolio_stats(p_user_id UUID DEFAULT NULL)
+RETURNS JSON AS $$
+DECLARE
+    v_total_applications INTEGER;
+    v_avg_pd DECIMAL(5,4);
+    v_approval_rate DECIMAL(5,4);
+    v_default_rate DECIMAL(5,4);
+    v_grade_distribution JSONB;
+BEGIN
+    -- Get total count and average PD in one query
+    SELECT 
+        COUNT(*)::INTEGER,
+        COALESCE(AVG(pd), 0.0)::DECIMAL(5,4)
+    INTO v_total_applications, v_avg_pd
+    FROM applications
+    WHERE (p_user_id IS NULL OR user_id = p_user_id);
+    
+    -- Return empty stats if no applications
+    IF v_total_applications = 0 THEN
+        RETURN json_build_object(
+            'total_applications', 0,
+            'avg_pd', 0.0,
+            'approval_rate', 0.0,
+            'default_rate', 0.0,
+            'grade_distribution', '{"A": 0, "B": 0, "C": 0, "D": 0, "E": 0, "F": 0, "G": 0}'::jsonb
+        );
+    END IF;
+    
+    -- Calculate approval rate using COUNT with CASE
+    SELECT 
+        COALESCE(
+            COUNT(*) FILTER (WHERE decision = 'approve')::DECIMAL / NULLIF(COUNT(*), 0),
+            0.0
+        )::DECIMAL(5,4)
+    INTO v_approval_rate
+    FROM applications
+    WHERE (p_user_id IS NULL OR user_id = p_user_id);
+    
+    -- Calculate grade distribution using JSON aggregation
+    SELECT json_object_agg(
+        risk_grade,
+        grade_count
+    )
+    INTO v_grade_distribution
+    FROM (
+        SELECT 
+            risk_grade,
+            COUNT(*)::INTEGER as grade_count
+        FROM applications
+        WHERE (p_user_id IS NULL OR user_id = p_user_id)
+        GROUP BY risk_grade
+    ) grade_counts;
+    
+    -- Ensure all grades are present (fill missing with 0)
+    v_grade_distribution := (
+        SELECT json_object_agg(
+            grade,
+            COALESCE((v_grade_distribution->>grade)::INTEGER, 0)
+        )
+        FROM unnest(ARRAY['A', 'B', 'C', 'D', 'E', 'F', 'G']) grade
+    );
+    
+    -- Default rate is same as avg_pd (using avg PD as proxy)
+    v_default_rate := v_avg_pd;
+    
+    -- Return aggregated statistics as JSON
+    RETURN json_build_object(
+        'total_applications', v_total_applications,
+        'avg_pd', v_avg_pd,
+        'approval_rate', v_approval_rate,
+        'default_rate', v_default_rate,
+        'grade_distribution', v_grade_distribution
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
