@@ -190,6 +190,125 @@ def _risk_grade(pd_val: float) -> str:
     if pd_val < 0.60:  return "F"
     return "G"
 
+def _compute_portfolio_stats(supabase: Client, user_id: str | None = None) -> dict:
+    """
+    Compute portfolio statistics from applications table.
+    
+    Returns:
+        dict with total_applications, avg_pd, approval_rate, default_rate, grade_distribution
+    """
+    # Get total count
+    count_query = supabase.table("applications").select("id", count="exact")
+    if user_id:
+        count_query = count_query.eq("user_id", user_id)
+    count_result = count_query.execute()
+    total_applications = count_result.count or 0
+    
+    if total_applications == 0:
+        return {
+            "total_applications": 0,
+            "avg_pd": 0.0,
+            "approval_rate": 0.0,
+            "default_rate": 0.0,
+            "grade_distribution": {"A": 0, "B": 0, "C": 0, "D": 0, "E": 0, "F": 0, "G": 0}
+        }
+    
+    # Get all application data for aggregation
+    stats_query = supabase.table("applications").select("pd, risk_grade, decision")
+    if user_id:
+        stats_query = stats_query.eq("user_id", user_id)
+    stats_result = stats_query.execute()
+    applications = stats_result.data
+    
+    # Calculate metrics
+    pds = [app["pd"] for app in applications]
+    avg_pd = sum(pds) / len(pds) if pds else 0.0
+    
+    approved_count = sum(1 for app in applications if app["decision"] == "approve")
+    approval_rate = approved_count / len(applications) if applications else 0.0
+    
+    # Grade distribution
+    grade_counts = {}
+    for grade in "ABCDEFG":
+        grade_counts[grade] = sum(1 for app in applications if app["risk_grade"] == grade)
+    
+    return {
+        "total_applications": total_applications,
+        "avg_pd": round(avg_pd, 4),
+        "approval_rate": round(approval_rate, 4),
+        "default_rate": round(avg_pd, 4),  # Using avg PD as proxy for expected default rate
+        "grade_distribution": grade_counts
+    }
+
+def _get_or_compute_portfolio_stats(supabase: Client, user_id: str | None = None) -> dict:
+    """
+    Get portfolio stats from cache if fresh, otherwise compute and update cache.
+    Uses row count comparison to determine cache freshness.
+    
+    Returns:
+        dict with portfolio statistics
+    """
+    # Get current actual count of applications
+    count_query = supabase.table("applications").select("id", count="exact")
+    if user_id:
+        count_query = count_query.eq("user_id", user_id)
+    count_result = count_query.execute()
+    actual_count = count_result.count or 0
+    
+    # Try to get cached stats
+    cached_stats = None
+    if user_id:
+        try:
+            cached_result = supabase.table("portfolio_stats").select("*").eq("user_id", user_id).order("computed_at", desc=True).limit(1).execute()
+            if cached_result.data and len(cached_result.data) > 0:
+                cached_stats = cached_result.data[0]
+        except Exception as e:
+            logger.debug(f"Failed to fetch cached portfolio stats: {str(e)}")
+    
+    # Check if cache is fresh by comparing total_applications count
+    if cached_stats and cached_stats.get("total_applications") == actual_count:
+        logger.debug(f"Using cached portfolio stats for user {user_id} (count: {actual_count})")
+        return {
+            "total_applications": cached_stats["total_applications"],
+            "avg_pd": float(cached_stats["avg_pd"]),
+            "approval_rate": float(cached_stats["approval_rate"]),
+            "default_rate": float(cached_stats["default_rate"]),
+            "grade_distribution": cached_stats["grade_distribution"]
+        }
+    
+    # Cache is stale or doesn't exist - compute fresh stats
+    logger.info(f"Computing fresh portfolio stats for user {user_id} (cache count: {cached_stats.get('total_applications') if cached_stats else 'none'}, actual count: {actual_count})")
+    stats = _compute_portfolio_stats(supabase, user_id)
+    
+    # Update cache if we have a user_id (can't cache without user context)
+    if user_id:
+        try:
+            stats_for_cache = {
+                "user_id": user_id,
+                "total_applications": stats["total_applications"],
+                "avg_pd": stats["avg_pd"],
+                "approval_rate": stats["approval_rate"],
+                "default_rate": stats["default_rate"],
+                "grade_distribution": stats["grade_distribution"],
+                "threshold": 0.25  # Default threshold
+            }
+            
+            # Try to update existing record first
+            update_result = supabase.table("portfolio_stats").update(stats_for_cache).eq("user_id", user_id).execute()
+            
+            # If no rows were updated, insert new record
+            if not update_result.data or len(update_result.data) == 0:
+                insert_result = supabase.table("portfolio_stats").insert(stats_for_cache).execute()
+                if insert_result.data:
+                    logger.debug(f"Successfully inserted portfolio stats cache for user {user_id}")
+            else:
+                logger.debug(f"Successfully updated portfolio stats cache for user {user_id}")
+        except Exception as e:
+            logger.warning(f"Failed to update portfolio stats cache: {str(e)}")
+            # Don't fail the request if cache update fails
+    
+    return stats
+
 def _to_dataframe(req: ScoreRequest) -> pd.DataFrame:
     row = {
         "loan_amnt": req.loan_amnt,
@@ -237,8 +356,13 @@ def score(request: Request, req: ScoreRequest, authorization: str | None = Heade
     
     # Extract user JWT from Authorization header
     user_jwt = None
+    user_id = None
+    is_valid_token = False
+    
     if authorization and authorization.startswith("Bearer "):
         user_jwt = authorization.split(" ")[1]
+        # Extract user_id early for cache invalidation
+        user_id, is_valid_token = get_user_id_from_token(authorization)
     
     df = _to_dataframe(req)
     try:
@@ -273,12 +397,10 @@ def score(request: Request, req: ScoreRequest, authorization: str | None = Heade
         }
         
         # Add user_id if JWT is available and valid
-        if user_jwt:
-            user_id, is_valid_token = get_user_id_from_token(authorization)
-            if is_valid_token and user_id:
-                application_data["user_id"] = user_id
-            elif user_jwt and not is_valid_token:
-                logger.warning("Invalid or unverifiable JWT token provided for application scoring")
+        if is_valid_token and user_id:
+            application_data["user_id"] = user_id
+        elif user_jwt and not is_valid_token:
+            logger.warning("Invalid or unverifiable JWT token provided for application scoring")
         
         # Attempt to save with retry logic for transient errors
         max_retries = 2
@@ -293,6 +415,17 @@ def score(request: Request, req: ScoreRequest, authorization: str | None = Heade
                     saved_successfully = True
                     if attempt > 0:
                         logger.info(f"Successfully saved application after {attempt} retries")
+                    
+                    # Invalidate portfolio stats cache for this user
+                    # The cache will be automatically recomputed on next portfolio request
+                    if is_valid_token and user_id:
+                        try:
+                            # Delete cached stats to force recomputation on next request
+                            supabase.table("portfolio_stats").delete().eq("user_id", user_id).execute()
+                            logger.debug(f"Invalidated portfolio stats cache for user {user_id}")
+                        except Exception as e:
+                            logger.debug(f"Failed to invalidate cache (non-critical): {str(e)}")
+                    
                     break
                 elif hasattr(result, 'data') and not result.data:
                     # Insert returned no data - could be RLS policy issue
@@ -366,46 +499,10 @@ def portfolio(request: Request, authorization: str | None = Header(default=None)
         logger.warning("Invalid or unverifiable JWT token provided for portfolio query. RLS policies will enforce access control.")
     
     try:
-        # Build query with optional user filtering
-        # Note: RLS policies in Supabase will enforce data isolation even if user_id is None
-        query = supabase.table("applications").select("id", count="exact")
-        if is_valid_token and user_id:
-            query = query.eq("user_id", user_id)
+        # Get portfolio stats from cache or compute fresh (uses row count comparison)
+        stats = _get_or_compute_portfolio_stats(supabase, user_id if is_valid_token and user_id else None)
         
-        total_result = query.execute()
-        total_applications = total_result.count or 0
-        
-        if total_applications == 0:
-            return {
-                "total_applications": 0,
-                "avg_pd": 0.0,
-                "approval_rate": 0.0,
-                "default_rate": 0.0,
-                "grade_distribution": {"A": 0, "B": 0, "C": 0, "D": 0, "E": 0, "F": 0, "G": 0},
-                "recent_applications": []
-            }
-        
-        # Get aggregated stats with user filtering
-        stats_query = supabase.table("applications").select("pd, risk_grade, decision")
-        if is_valid_token and user_id:
-            stats_query = stats_query.eq("user_id", user_id)
-        
-        stats_result = stats_query.execute()
-        applications = stats_result.data
-        
-        # Calculate metrics
-        pds = [app["pd"] for app in applications]
-        avg_pd = sum(pds) / len(pds) if pds else 0.0
-        
-        approved_count = sum(1 for app in applications if app["decision"] == "approve")
-        approval_rate = approved_count / len(applications) if applications else 0.0
-        
-        # Grade distribution
-        grade_counts = {}
-        for grade in "ABCDEFG":
-            grade_counts[grade] = sum(1 for app in applications if app["risk_grade"] == grade)
-        
-        # Recent applications (last 20) with user filtering
+        # Get recent applications (always fetch fresh, not cached)
         recent_query = supabase.table("applications").select(
             "created_at, loan_amnt, annual_inc, pd, risk_grade, decision"
         ).order("created_at", desc=True).limit(20)
@@ -416,11 +513,11 @@ def portfolio(request: Request, authorization: str | None = Header(default=None)
         recent_result = recent_query.execute()
         
         return {
-            "total_applications": total_applications,
-            "avg_pd": round(avg_pd, 4),
-            "approval_rate": round(approval_rate, 4),
-            "default_rate": round(avg_pd, 4),  # Using avg PD as proxy for expected default rate
-            "grade_distribution": grade_counts,
+            "total_applications": stats["total_applications"],
+            "avg_pd": stats["avg_pd"],
+            "approval_rate": stats["approval_rate"],
+            "default_rate": stats["default_rate"],
+            "grade_distribution": stats["grade_distribution"],
             "recent_applications": recent_result.data
         }
         
