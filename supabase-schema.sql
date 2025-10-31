@@ -39,13 +39,15 @@ CREATE TABLE applications (
 -- Portfolio stats table for cached aggregates
 CREATE TABLE portfolio_stats (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     computed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     total_applications INTEGER NOT NULL,
     avg_pd DECIMAL(5,4) NOT NULL,
     approval_rate DECIMAL(5,4) NOT NULL,
     default_rate DECIMAL(5,4) NOT NULL,
     grade_distribution JSONB NOT NULL,
-    threshold DECIMAL(5,4) NOT NULL DEFAULT 0.25
+    threshold DECIMAL(5,4) NOT NULL DEFAULT 0.25,
+    UNIQUE(user_id)  -- One stats row per user
 );
 
 -- Indexes for performance
@@ -53,25 +55,15 @@ CREATE INDEX idx_applications_created_at ON applications(created_at DESC);
 CREATE INDEX idx_applications_grade ON applications(grade);
 CREATE INDEX idx_applications_pd ON applications(pd);
 CREATE INDEX idx_applications_decision ON applications(decision);
+CREATE INDEX idx_applications_user_id ON applications(user_id);
+CREATE INDEX idx_portfolio_stats_user_id ON portfolio_stats(user_id);
 
--- Insert initial portfolio stats (will be updated by backend)
-INSERT INTO portfolio_stats (
-    total_applications, 
-    avg_pd, 
-    approval_rate, 
-    default_rate, 
-    grade_distribution
-) VALUES (
-    0, 
-    0.0, 
-    0.0, 
-    0.0, 
-    '{"A": 0, "B": 0, "C": 0, "D": 0, "E": 0, "F": 0, "G": 0}'::jsonb
-);
+-- Note: Initial portfolio stats are created per-user when needed (no global default row)
 
 -- Row Level Security (RLS) Policies
 ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE applications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE portfolio_stats ENABLE ROW LEVEL SECURITY;
 
 -- Users can view their own profile
 CREATE POLICY "Users can view own profile" ON user_profiles
@@ -94,6 +86,22 @@ CREATE POLICY "Users can view own applications" ON applications
 -- Users can insert applications
 CREATE POLICY "Users can insert applications" ON applications
     FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Users can view their own portfolio stats
+CREATE POLICY "Users can view own portfolio stats" ON portfolio_stats
+    FOR SELECT USING (auth.uid() = user_id);
+
+-- Users can insert their own portfolio stats
+CREATE POLICY "Users can insert own portfolio stats" ON portfolio_stats
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Users can update their own portfolio stats
+CREATE POLICY "Users can update own portfolio stats" ON portfolio_stats
+    FOR UPDATE USING (auth.uid() = user_id);
+
+-- Users can delete their own portfolio stats
+CREATE POLICY "Users can delete own portfolio stats" ON portfolio_stats
+    FOR DELETE USING (auth.uid() = user_id);
 
 -- Function to automatically create user profile on signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -191,3 +199,62 @@ BEGIN
     );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to update or insert portfolio stats for a user
+CREATE OR REPLACE FUNCTION public.upsert_portfolio_stats(p_user_id UUID)
+RETURNS VOID AS $$
+DECLARE
+    v_stats JSON;
+BEGIN
+    -- Compute stats for the user
+    v_stats := public.compute_portfolio_stats(p_user_id);
+    
+    -- Upsert portfolio stats (UPDATE if exists, INSERT if not)
+    INSERT INTO portfolio_stats (
+        user_id,
+        total_applications,
+        avg_pd,
+        approval_rate,
+        default_rate,
+        grade_distribution,
+        threshold,
+        computed_at
+    ) VALUES (
+        p_user_id,
+        (v_stats->>'total_applications')::INTEGER,
+        (v_stats->>'avg_pd')::DECIMAL(5,4),
+        (v_stats->>'approval_rate')::DECIMAL(5,4),
+        (v_stats->>'default_rate')::DECIMAL(5,4),
+        (v_stats->>'grade_distribution')::JSONB,
+        0.25,
+        NOW()
+    )
+    ON CONFLICT (user_id) DO UPDATE SET
+        total_applications = EXCLUDED.total_applications,
+        avg_pd = EXCLUDED.avg_pd,
+        approval_rate = EXCLUDED.approval_rate,
+        default_rate = EXCLUDED.default_rate,
+        grade_distribution = EXCLUDED.grade_distribution,
+        computed_at = NOW();
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger function to automatically update portfolio stats when application is inserted
+CREATE OR REPLACE FUNCTION public.update_portfolio_stats_on_application()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Only update stats if user_id is present
+    IF NEW.user_id IS NOT NULL THEN
+        -- Use deferred execution to avoid transaction conflicts
+        PERFORM public.upsert_portfolio_stats(NEW.user_id);
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger to update portfolio stats when new application is inserted
+CREATE TRIGGER trigger_update_portfolio_stats_on_insert
+    AFTER INSERT ON applications
+    FOR EACH ROW
+    WHEN (NEW.user_id IS NOT NULL)
+    EXECUTE FUNCTION public.update_portfolio_stats_on_application();

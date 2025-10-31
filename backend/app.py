@@ -446,15 +446,11 @@ def score(request: Request, req: ScoreRequest, authorization: str | None = Heade
                     if attempt > 0:
                         logger.info(f"Successfully saved application after {attempt} retries")
                     
-                    # Invalidate portfolio stats cache for this user
-                    # The cache will be automatically recomputed on next portfolio request
+                    # Portfolio stats are automatically updated via database trigger
+                    # (trigger_update_portfolio_stats_on_insert) when application is inserted.
+                    # No manual cache invalidation needed - stats are kept fresh automatically.
                     if is_valid_token and user_id:
-                        try:
-                            # Delete cached stats to force recomputation on next request
-                            supabase.table("portfolio_stats").delete().eq("user_id", user_id).execute()
-                            logger.debug(f"Invalidated portfolio stats cache for user {user_id}")
-                        except Exception as e:
-                            logger.debug(f"Failed to invalidate cache (non-critical): {str(e)}")
+                        logger.debug(f"Application saved for user {user_id}; portfolio stats will be updated automatically by trigger")
                     
                     break
                 elif hasattr(result, 'data') and not result.data:
