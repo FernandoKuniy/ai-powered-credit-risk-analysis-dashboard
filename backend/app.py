@@ -247,41 +247,94 @@ def score(request: Request, req: ScoreRequest, authorization: str | None = Heade
     # Save to Supabase if connected
     supabase = get_supabase_client(user_jwt)
     if supabase:
-        try:
-            application_data = {
-                "loan_amnt": req.loan_amnt,
-                "annual_inc": float(req.annual_inc),
-                "dti": float(req.dti),
-                "emp_length": req.emp_length,
-                "grade": req.grade,
-                "term": req.term,
-                "purpose": req.purpose,
-                "home_ownership": req.home_ownership,
-                "state": req.state,
-                "revol_util": float(req.revol_util),
-                "fico": req.fico,
-                "pd": float(pd_hat),
-                "risk_grade": risk,
-                "decision": decision
-            }
-            
-            # Add user_id if JWT is available and valid
-            if user_jwt:
-                user_id, is_valid_token = get_user_id_from_token(authorization)
-                if is_valid_token and user_id:
-                    application_data["user_id"] = user_id
-                elif user_jwt and not is_valid_token:
-                    logger.warning("Invalid or unverifiable JWT token provided for application scoring")
-                    
-            result = supabase.table("applications").insert(application_data).execute()
-            if hasattr(result, 'data') and not result.data:
-                raise Exception("Failed to insert application data")
+        application_data = {
+            "loan_amnt": req.loan_amnt,
+            "annual_inc": float(req.annual_inc),
+            "dti": float(req.dti),
+            "emp_length": req.emp_length,
+            "grade": req.grade,
+            "term": req.term,
+            "purpose": req.purpose,
+            "home_ownership": req.home_ownership,
+            "state": req.state,
+            "revol_util": float(req.revol_util),
+            "fico": req.fico,
+            "pd": float(pd_hat),
+            "risk_grade": risk,
+            "decision": decision
+        }
+        
+        # Add user_id if JWT is available and valid
+        if user_jwt:
+            user_id, is_valid_token = get_user_id_from_token(authorization)
+            if is_valid_token and user_id:
+                application_data["user_id"] = user_id
+            elif user_jwt and not is_valid_token:
+                logger.warning("Invalid or unverifiable JWT token provided for application scoring")
+        
+        # Attempt to save with retry logic for transient errors
+        max_retries = 2
+        saved_successfully = False
+        
+        for attempt in range(max_retries + 1):
+            try:
+                result = supabase.table("applications").insert(application_data).execute()
                 
-        except Exception as e:
-            # Log the error but don't fail the entire request
-            logger.error(f"Failed to save application to database: {type(e).__name__}: {str(e)}", exc_info=True)
-            # Optionally raise HTTPException if you want to fail on DB errors:
-            # raise HTTPException(status_code=500, detail="Failed to save application. Please try again.")
+                # Verify insert was successful
+                if hasattr(result, 'data') and result.data:
+                    saved_successfully = True
+                    if attempt > 0:
+                        logger.info(f"Successfully saved application after {attempt} retries")
+                    break
+                elif hasattr(result, 'data') and not result.data:
+                    # Insert returned no data - could be RLS policy issue
+                    logger.warning(
+                        f"Database insert returned no data (attempt {attempt + 1}/{max_retries + 1}). "
+                        "This may indicate RLS policy rejection or missing user_id."
+                    )
+                    if attempt == max_retries:
+                        raise ValueError("Insert operation returned no data after retries")
+                    continue
+                else:
+                    # Unexpected result structure
+                    logger.warning(
+                        f"Unexpected result structure from insert (attempt {attempt + 1}/{max_retries + 1}): "
+                        f"{type(result)}"
+                    )
+                    if attempt == max_retries:
+                        raise ValueError("Insert operation returned unexpected result structure")
+                    continue
+                    
+            except Exception as e:
+                error_type = type(e).__name__
+                error_msg = str(e)
+                
+                # Determine if this is a transient error (worth retrying)
+                is_transient = any(indicator in error_msg.lower() for indicator in [
+                    'timeout', 'connection', 'network', 'temporary', '503', '502', '504'
+                ])
+                
+                if attempt < max_retries and is_transient:
+                    logger.warning(
+                        f"Transient error during database insert (attempt {attempt + 1}/{max_retries + 1}): "
+                        f"{error_type}: {error_msg}. Retrying..."
+                    )
+                    continue
+                else:
+                    # Log the failure (critical or max retries reached)
+                    logger.error(
+                        f"Failed to save application to database after {attempt + 1} attempts: "
+                        f"{error_type}: {error_msg}. "
+                        f"Scoring completed successfully but data was not persisted.",
+                        exc_info=True
+                    )
+                    break
+        
+        if not saved_successfully:
+            logger.error(
+                "Application scoring completed but data persistence failed. "
+                "This may indicate database connectivity issues or RLS policy violations."
+            )
     
     return ScoreResponse(pd=pd_hat, risk_grade=risk, decision=decision, top_features=None)
 
