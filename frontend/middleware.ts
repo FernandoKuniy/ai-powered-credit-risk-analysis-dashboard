@@ -71,10 +71,8 @@ export async function middleware(request: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession()
 
-  // If user is not signed in and the current path is protected, redirect to auth page
-  if (!session && request.nextUrl.pathname.startsWith('/dashboard')) {
-    return NextResponse.redirect(new URL('/auth', request.url))
-  }
+  // Note: We allow unauthenticated access to /dashboard so users can see the CTA
+  // The dashboard page component itself handles showing appropriate content
 
   // If user is signed in and trying to access auth page, redirect to dashboard
   if (session && request.nextUrl.pathname.startsWith('/auth')) {
