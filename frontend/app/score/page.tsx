@@ -1,8 +1,8 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { scoreApplication } from "../../lib/api";
 import Navigation from "../components/Navigation";
-import ProtectedRoute from "../components/ProtectedRoute";
 import { useAuth } from "../../lib/auth";
 import InfoIcon from "../components/InfoIcon";
 
@@ -12,7 +12,7 @@ export default function ScorePage() {
   const [error, setError] = useState<string | null>(null);
   const [simulatedThreshold, setSimulatedThreshold] = useState(0.25); // Default threshold matching backend
   const [submittedGrade, setSubmittedGrade] = useState<string | null>(null); // Store the input grade for display
-  const { session } = useAuth();
+  const { session, user } = useAuth();
 
   const purposeOptions = [
     "car",
@@ -65,12 +65,20 @@ export default function ScorePage() {
     }
   }
 
+  const isAuthenticated = !!user;
+
   return (
-    <ProtectedRoute>
-      <main>
-        <Navigation />
-        <div className="card">
-          <h2 className="text-xl font-semibold mb-4">Scoring Form</h2>
+    <main>
+      <Navigation />
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold">Scoring Form</h2>
+          {!isAuthenticated && (
+            <span className="text-xs text-white/50 bg-white/10 px-2 py-1 rounded">
+              Try it free • No sign-up required
+            </span>
+          )}
+        </div>
         <form className="grid gap-6 md:grid-cols-2" onSubmit={onSubmit}>
           {/* numeric fields */}
           <label className="block space-y-2">
@@ -187,11 +195,40 @@ export default function ScorePage() {
                   <div className="text-xs text-white/50 mt-1">Calculated from PD</div>
                 </div>
                 <div className="card">
-                  <div className="text-white/60">Decision (Saved)</div>
+                  <div className="text-white/60">Decision{isAuthenticated ? " (Saved)" : ""}</div>
                   <div className="text-2xl font-semibold capitalize">{result.decision}</div>
                   <div className="text-xs text-white/50 mt-1">Threshold: 25%</div>
                 </div>
               </div>
+              
+              {/* Sign-up prompt for unauthenticated users */}
+              {!isAuthenticated && (
+                <div className="mt-6 p-4 bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <div className="text-2xl">💾</div>
+                    <div className="flex-1">
+                      <h4 className="font-semibold mb-2">Save this result to your dashboard</h4>
+                      <p className="text-sm text-white/80 mb-4">
+                        This scoring result is not saved. Create a free account to save your applications, track your portfolio, and access detailed analytics.
+                      </p>
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <Link 
+                          href="/auth?mode=signup" 
+                          className="btn px-6 py-2 text-center"
+                        >
+                          Sign Up Free
+                        </Link>
+                        <Link 
+                          href="/auth?mode=login" 
+                          className="px-6 py-2 text-center text-white/80 hover:text-white border border-white/20 rounded-xl hover:border-white/40 transition-colors"
+                        >
+                          Already have an account? Sign In
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               
               {/* Grade comparison */}
               {submittedGrade && submittedGrade !== result.risk_grade && (
@@ -283,6 +320,5 @@ export default function ScorePage() {
         )}
         </div>
       </main>
-    </ProtectedRoute>
   );
 }

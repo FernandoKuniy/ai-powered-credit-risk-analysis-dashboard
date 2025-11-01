@@ -1,13 +1,25 @@
 "use client";
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { LoginForm, SignUpForm } from '../components/AuthForms';
 import { useAuth } from '../../lib/auth';
 import { useRouter } from 'next/navigation';
 
 export default function AuthPage() {
-  const [isLogin, setIsLogin] = useState(true);
+  const searchParams = useSearchParams();
+  const mode = searchParams.get('mode');
+  const [isLogin, setIsLogin] = useState(mode !== 'signup');
   const { user, loading } = useAuth();
   const router = useRouter();
+
+  // Update state if mode changes in URL
+  useEffect(() => {
+    if (mode === 'signup') {
+      setIsLogin(false);
+    } else if (mode === 'login') {
+      setIsLogin(true);
+    }
+  }, [mode]);
 
   // Redirect authenticated users to dashboard
   useEffect(() => {

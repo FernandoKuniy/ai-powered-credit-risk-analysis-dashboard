@@ -1,10 +1,10 @@
 "use client";
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { getPortfolio, simulatePortfolio, PortfolioData, SimulationData } from "../../lib/portfolio";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts";
 import Navigation from "../components/Navigation";
-import ProtectedRoute from "../components/ProtectedRoute";
 import { useAuth } from "../../lib/auth";
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658'];
@@ -15,15 +15,18 @@ export default function DashboardPage() {
   const [threshold, setThreshold] = useState(0.25);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { session } = useAuth();
+  const { session, user, loading: authLoading } = useAuth();
   const pathname = usePathname();
 
   // Reload portfolio when navigating to this page (handles production caching)
   useEffect(() => {
     if (session?.access_token && pathname === "/dashboard") {
       loadPortfolio();
+    } else if (!authLoading && !user) {
+      // User is not authenticated, stop loading
+      setLoading(false);
     }
-  }, [session?.access_token, pathname]);
+  }, [session?.access_token, pathname, authLoading, user]);
 
   useEffect(() => {
     if (portfolio && portfolio.total_applications > 0) {
@@ -57,7 +60,8 @@ export default function DashboardPage() {
     }
   }
 
-  if (loading) {
+  // Show loading state while checking auth
+  if (authLoading || (user && loading && !portfolio && !error)) {
     return (
       <main>
         <Navigation />
@@ -65,6 +69,45 @@ export default function DashboardPage() {
           <div className="text-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-4"></div>
             <p className="text-white/70">Loading portfolio data...</p>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Show CTA for unauthenticated users
+  if (!user && !authLoading) {
+    return (
+      <main>
+        <Navigation />
+        <div className="card text-center py-12">
+          <div className="text-6xl mb-4">📊</div>
+          <h2 className="text-2xl font-semibold mb-4">Portfolio Dashboard</h2>
+          <p className="text-white/70 mb-6 max-w-xl mx-auto">
+            Sign up for a free account to access your portfolio analytics dashboard. Track your scored applications, view risk distributions, simulate approval policies, and monitor your lending portfolio.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link 
+              href="/auth?mode=signup" 
+              className="btn px-6 py-3 text-center"
+            >
+              Sign Up Free
+            </Link>
+            <Link 
+              href="/auth?mode=login" 
+              className="px-6 py-3 text-center text-white/80 hover:text-white border border-white/20 rounded-xl hover:border-white/40 transition-colors"
+            >
+              Already have an account? Sign In
+            </Link>
+          </div>
+          <div className="mt-8 pt-8 border-t border-white/10">
+            <p className="text-sm text-white/60 mb-4">Want to try scoring first?</p>
+            <Link 
+              href="/score" 
+              className="text-blue-400 hover:text-blue-300 underline"
+            >
+              Score an application for free (no sign-up required)
+            </Link>
           </div>
         </div>
       </main>
@@ -85,31 +128,42 @@ export default function DashboardPage() {
     );
   }
 
-  if (!portfolio) return null;
+  if (!portfolio && user) {
+    // User is authenticated but portfolio hasn't loaded yet (shouldn't happen, but safety check)
+    return (
+      <main>
+        <Navigation />
+        <div className="card">
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-4"></div>
+            <p className="text-white/70">Loading portfolio data...</p>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   // Show empty state if no applications
   if (portfolio.total_applications === 0) {
     return (
-      <ProtectedRoute>
-        <main>
-          <Navigation />
-          <div className="card">
-            <div className="text-center py-12">
-              <div className="text-6xl mb-4">📊</div>
-              <h2 className="text-2xl font-semibold mb-4">No Applications Yet</h2>
-              <p className="text-white/70 mb-6">
-                You haven't submitted any loan applications yet. Get started by scoring your first application!
-              </p>
-              <a 
-                href="/score" 
-                className="btn inline-block"
-              >
-                Score Your First Application
-              </a>
-            </div>
+      <main>
+        <Navigation />
+        <div className="card">
+          <div className="text-center py-12">
+            <div className="text-6xl mb-4">📊</div>
+            <h2 className="text-2xl font-semibold mb-4">No Applications Yet</h2>
+            <p className="text-white/70 mb-6">
+              You haven't submitted any loan applications yet. Get started by scoring your first application!
+            </p>
+            <Link 
+              href="/score" 
+              className="btn inline-block"
+            >
+              Score Your First Application
+            </Link>
           </div>
-        </main>
-      </ProtectedRoute>
+        </div>
+      </main>
     );
   }
 
@@ -130,10 +184,9 @@ export default function DashboardPage() {
   }
 
   return (
-    <ProtectedRoute>
-      <main>
-        <Navigation />
-        <div className="grid gap-6">
+    <main>
+      <Navigation />
+      <div className="grid gap-6">
         {/* KPI Cards */}
         <section className="grid gap-4 md:grid-cols-4">
           <div className="card">
@@ -306,6 +359,5 @@ export default function DashboardPage() {
         )}
         </div>
       </main>
-    </ProtectedRoute>
   );
 }
