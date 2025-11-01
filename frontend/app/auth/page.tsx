@@ -1,11 +1,11 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { LoginForm, SignUpForm } from '../components/AuthForms';
 import { useAuth } from '../../lib/auth';
 import { useRouter } from 'next/navigation';
 
-export default function AuthPage() {
+function AuthPageContent() {
   const searchParams = useSearchParams();
   const mode = searchParams.get('mode');
   const [isLogin, setIsLogin] = useState(mode !== 'signup');
@@ -80,5 +80,17 @@ export default function AuthPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function AuthPage() {
+  return (
+    <Suspense fallback={
+      <main className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+      </main>
+    }>
+      <AuthPageContent />
+    </Suspense>
   );
 }
