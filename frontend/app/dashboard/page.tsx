@@ -2,10 +2,11 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { getPortfolio, simulatePortfolio, PortfolioData, SimulationData } from "../../lib/portfolio";
+import { getPortfolio, simulatePortfolio, getApplication, PortfolioData, SimulationData, ApplicationDetail } from "../../lib/portfolio";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts";
 import Navigation from "../components/Navigation";
 import { useAuth } from "../../lib/auth";
+import ExplanationDisplay from "../components/ExplanationDisplay";
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658'];
 
@@ -15,6 +16,8 @@ export default function DashboardPage() {
   const [threshold, setThreshold] = useState(0.25);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedApplication, setSelectedApplication] = useState<ApplicationDetail | null>(null);
+  const [loadingApplication, setLoadingApplication] = useState(false);
   const { session, user, loading: authLoading } = useAuth();
   const pathname = usePathname();
 
@@ -59,6 +62,34 @@ export default function DashboardPage() {
       console.error("Simulation failed:", err);
     }
   }
+
+  async function handleApplicationClick(applicationId: string) {
+    if (!session?.access_token) return;
+    
+    try {
+      setLoadingApplication(true);
+      const app = await getApplication(applicationId, session.access_token);
+      setSelectedApplication(app);
+    } catch (err: any) {
+      console.error("Failed to load application:", err);
+      setError(err?.message || "Failed to load application details");
+    } finally {
+      setLoadingApplication(false);
+    }
+  }
+
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    if (selectedApplication) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [selectedApplication]);
 
   // Show loading state while checking auth
   if (authLoading || (user && loading && !portfolio && !error)) {
@@ -333,7 +364,11 @@ export default function DashboardPage() {
                 </thead>
                 <tbody>
                   {portfolio.recent_applications.slice(0, 10).map((app, idx) => (
-                    <tr key={idx} className="border-b border-gray-800">
+                    <tr 
+                      key={app.id || idx} 
+                      className="border-b border-gray-800 hover:bg-white/5 cursor-pointer transition-colors"
+                      onClick={() => app.id && handleApplicationClick(app.id)}
+                    >
                       <td className="py-2">{new Date(app.created_at).toLocaleDateString()}</td>
                       <td className="py-2">${app.loan_amnt.toLocaleString()}</td>
                       <td className="py-2">${app.annual_inc.toLocaleString()}</td>
@@ -362,6 +397,120 @@ export default function DashboardPage() {
               </table>
             </div>
           </section>
+        )}
+
+        {/* Application Detail Modal */}
+        {selectedApplication && (
+          <div 
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto"
+            onClick={() => setSelectedApplication(null)}
+            style={{ overscrollBehavior: 'contain' }}
+          >
+            <div 
+              className="bg-gray-900 border border-white/20 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto my-auto"
+              onClick={(e) => e.stopPropagation()}
+              style={{ overscrollBehavior: 'contain' }}
+            >
+              <div className="sticky top-0 bg-gray-900/95 backdrop-blur-sm border-b border-white/10 p-6 flex justify-between items-start z-10">
+                <h2 className="text-2xl font-semibold">Application Details</h2>
+                <button
+                  onClick={() => setSelectedApplication(null)}
+                  className="text-white/60 hover:text-white text-3xl leading-none w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
+                  aria-label="Close modal"
+                >
+                  ×
+                </button>
+              </div>
+              
+              <div className="p-6">
+
+              {loadingApplication ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-4"></div>
+                  <p className="text-white/70">Loading application details...</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Results Summary */}
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                      <div className="text-white/60 text-sm">Probability of Default</div>
+                      <div className="text-2xl font-semibold">{(selectedApplication.pd * 100).toFixed(2)}%</div>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                      <div className="text-white/60 text-sm">Risk Grade</div>
+                      <div className="text-2xl font-semibold">{selectedApplication.risk_grade}</div>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                      <div className="text-white/60 text-sm">Decision</div>
+                      <div className="text-2xl font-semibold capitalize">{selectedApplication.decision}</div>
+                    </div>
+                  </div>
+
+                  {/* Application Input Fields */}
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-6">
+                    <h3 className="text-lg font-semibold mb-4">Application Input</h3>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <span className="text-white/60 text-sm">Loan Amount</span>
+                        <div className="text-white font-medium">${selectedApplication.loan_amnt.toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <span className="text-white/60 text-sm">Annual Income</span>
+                        <div className="text-white font-medium">${selectedApplication.annual_inc.toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <span className="text-white/60 text-sm">DTI</span>
+                        <div className="text-white font-medium">{selectedApplication.dti}%</div>
+                      </div>
+                      <div>
+                        <span className="text-white/60 text-sm">Employment Length</span>
+                        <div className="text-white font-medium">{selectedApplication.emp_length} years</div>
+                      </div>
+                      <div>
+                        <span className="text-white/60 text-sm">FICO Score</span>
+                        <div className="text-white font-medium">{selectedApplication.fico}</div>
+                      </div>
+                      <div>
+                        <span className="text-white/60 text-sm">Revolving Utilization</span>
+                        <div className="text-white font-medium">{selectedApplication.revol_util}%</div>
+                      </div>
+                      <div>
+                        <span className="text-white/60 text-sm">Grade</span>
+                        <div className="text-white font-medium">{selectedApplication.grade}</div>
+                      </div>
+                      <div>
+                        <span className="text-white/60 text-sm">Term</span>
+                        <div className="text-white font-medium">{selectedApplication.term}</div>
+                      </div>
+                      <div>
+                        <span className="text-white/60 text-sm">Purpose</span>
+                        <div className="text-white font-medium">{selectedApplication.purpose.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}</div>
+                      </div>
+                      <div>
+                        <span className="text-white/60 text-sm">Home Ownership</span>
+                        <div className="text-white font-medium">{selectedApplication.home_ownership}</div>
+                      </div>
+                      <div>
+                        <span className="text-white/60 text-sm">State</span>
+                        <div className="text-white font-medium">{selectedApplication.state}</div>
+                      </div>
+                      <div>
+                        <span className="text-white/60 text-sm">Created At</span>
+                        <div className="text-white font-medium">{new Date(selectedApplication.created_at).toLocaleString()}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Explanation */}
+                  {selectedApplication.explanation && (
+                    <ExplanationDisplay explanation={selectedApplication.explanation} pd={selectedApplication.pd} />
+                  )}
+                </div>
+              )}
+              </div>
+            </div>
+          </div>
         )}
         </div>
       </main>

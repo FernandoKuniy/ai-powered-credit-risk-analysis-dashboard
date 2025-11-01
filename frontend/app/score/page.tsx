@@ -5,6 +5,7 @@ import { scoreApplication, addUnsavedApplication, type UnsavedApplication } from
 import Navigation from "../components/Navigation";
 import { useAuth } from "../../lib/auth";
 import InfoIcon from "../components/InfoIcon";
+import ExplanationDisplay from "../components/ExplanationDisplay";
 
 export default function ScorePage() {
   const [loading, setLoading] = useState(false);
@@ -299,6 +300,11 @@ export default function ScorePage() {
                 </div>
               </div>
             </div>
+
+            {/* Explanation section */}
+            {result.explanation && (
+              <ExplanationDisplay explanation={result.explanation} pd={result.pd} />
+            )}
 
             {/* Sign-up prompt for unauthenticated users - placed last */}
             {!isAuthenticated && (

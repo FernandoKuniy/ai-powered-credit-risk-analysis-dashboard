@@ -38,11 +38,22 @@ class ScoreRequest(BaseModel):
             raise ValueError("State must be a 2-letter US state code (e.g., 'MA', 'CA')")
         return v
 
+class FeatureContribution(BaseModel):
+    feature: str
+    shap_value: float
+    impact: Literal["positive", "negative"]  # positive = increases PD, negative = decreases
+    contribution_pct: float
+
+class Explanation(BaseModel):
+    top_features: list[FeatureContribution]
+    summary: str
+
 class ScoreResponse(BaseModel):
     pd: float
     risk_grade: str
     decision: str
-    top_features: list[str] | None = None
+    top_features: list[str] | None = None  # Deprecated - use explanation instead
+    explanation: Explanation | None = None
 
 class SaveApplicationRequest(BaseModel):
     """Request model for saving a previously scored application"""

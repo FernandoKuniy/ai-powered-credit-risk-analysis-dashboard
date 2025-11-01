@@ -2,6 +2,8 @@
 import os, json, joblib
 import logging
 import pandas as pd
+import numpy as np
+import shap
 from fastapi import FastAPI, HTTPException, Depends, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -9,7 +11,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from schemas import ScoreRequest, ScoreResponse, SaveApplicationRequest, SaveApplicationResponse
 from supabase import create_client, Client
-from typing import Dict, Any
+from typing import Dict, Any, List
 from dotenv import load_dotenv
 
 # Load environment variables from .env.local file
@@ -168,15 +170,29 @@ META_PATH = "models/feature_meta.json"
 
 model = None
 feature_order: list[str] | None = None
+shap_explainer = None
+background_data = None  # Sample of training data for SHAP
 
 def _load_artifacts():
-    global model, feature_order
+    global model, feature_order, shap_explainer, background_data
     if not os.path.exists(MODEL_PATH):
         return False
     model = joblib.load(MODEL_PATH)
     with open(META_PATH) as f:
         meta = json.load(f)
     feature_order = meta["feature_order"]
+    
+    # Initialize SHAP explainer with background data
+    # For XGBoost, we can use TreeExplainer which is fast
+    try:
+        # Get the XGBoost model from the pipeline
+        xgb_model = model.named_steps['clf']
+        shap_explainer = shap.TreeExplainer(xgb_model)
+        logger.info("SHAP explainer initialized successfully")
+    except Exception as e:
+        logger.warning(f"Failed to initialize SHAP explainer: {str(e)}. Explanations will not be available.")
+        shap_explainer = None
+    
     return True
 
 _loaded = _load_artifacts()
@@ -189,6 +205,145 @@ def _risk_grade(pd_val: float) -> str:
     if pd_val < 0.40:  return "E"
     if pd_val < 0.60:  return "F"
     return "G"
+
+def _compute_shap_explanation(df: pd.DataFrame, pd_value: float) -> Dict[str, Any] | None:
+    """
+    Compute SHAP values for a given prediction and return top contributing features.
+    
+    Args:
+        df: DataFrame with single row (raw input features before preprocessing)
+        pd_value: Predicted probability of default
+        
+    Returns:
+        Dictionary with explanation data or None if SHAP is unavailable
+    """
+    if shap_explainer is None or model is None:
+        return None
+    
+    try:
+        # Transform input through preprocessing pipeline
+        preprocessor = model.named_steps['pre']
+        transformed_df = preprocessor.transform(df)
+        
+        # Compute SHAP values on transformed features
+        shap_values = shap_explainer.shap_values(transformed_df)
+        
+        # For binary classification, get values for positive class (default=1)
+        if isinstance(shap_values, list):
+            shap_values = shap_values[1]  # Get values for positive class
+        
+        shap_values = np.array(shap_values)
+        if shap_values.ndim > 1:
+            shap_values = shap_values[0]  # Get single row
+        
+        # Get original feature names and map SHAP values back
+        original_features = ['loan_amnt', 'annual_inc', 'dti', 'emp_length', 'revol_util', 'fico',
+                            'grade', 'term', 'purpose', 'home_ownership', 'state']
+        
+        shap_aggregated = {}
+        
+        # Process numeric features (first 6)
+        numeric_features = ['loan_amnt', 'annual_inc', 'dti', 'emp_length', 'revol_util', 'fico']
+        num_transformer = preprocessor.named_transformers_['num']
+        num_feature_indices = list(range(len(numeric_features)))
+        
+        for i, feat_name in enumerate(numeric_features):
+            if i < len(shap_values):
+                shap_aggregated[feat_name] = float(shap_values[i])
+        
+        # Process categorical features (one-hot encoded)
+        # We need to aggregate one-hot encoded SHAP values back to original features
+        cat_start_idx = len(numeric_features)
+        cat_transformer = preprocessor.named_transformers_['cat']
+        
+        # Get actual one-hot feature names
+        try:
+            if hasattr(cat_transformer, 'get_feature_names_out'):
+                cat_feature_names = cat_transformer.get_feature_names_out(['grade', 'term', 'purpose', 'home_ownership', 'state'])
+            else:
+                # Fallback: determine number of categorical features
+                n_cat_features = len(shap_values) - len(numeric_features)
+                cat_feature_names = [f"cat_{i}" for i in range(n_cat_features)]
+        except:
+            n_cat_features = len(shap_values) - len(numeric_features)
+            cat_feature_names = [f"cat_{i}" for i in range(n_cat_features)]
+        
+        # Aggregate categorical SHAP values
+        cat_features_map = {
+            'grade': [],
+            'term': [],
+            'purpose': [],
+            'home_ownership': [],
+            'state': []
+        }
+        
+        # Map one-hot encoded names to original features
+        for idx, feat_name in enumerate(cat_feature_names):
+            global_idx = cat_start_idx + idx
+            if global_idx < len(shap_values):
+                value = float(shap_values[global_idx])
+                if feat_name.startswith('grade_'):
+                    cat_features_map['grade'].append(value)
+                elif feat_name.startswith('term_'):
+                    cat_features_map['term'].append(value)
+                elif feat_name.startswith('purpose_'):
+                    cat_features_map['purpose'].append(value)
+                elif feat_name.startswith('home_ownership_'):
+                    cat_features_map['home_ownership'].append(value)
+                elif feat_name.startswith('state_'):
+                    cat_features_map['state'].append(value)
+        
+        # Aggregate by summing SHAP values for each categorical feature
+        for cat_feat, values in cat_features_map.items():
+            if values:
+                shap_aggregated[cat_feat] = float(sum(values))
+            else:
+                shap_aggregated[cat_feat] = 0.0
+        
+        # Create feature contributions list
+        feature_contributions = [
+            {
+                "feature": feat.replace('_', ' ').title(),  # Format feature name
+                "shap_value": float(shap_val),
+                "impact": "positive" if shap_val > 0 else "negative",
+                "contribution_pct": abs(shap_val) / (abs(pd_value) + 1e-10) * 100 if pd_value > 0 else 0.0
+            }
+            for feat, shap_val in shap_aggregated.items()
+        ]
+        
+        # Sort by absolute SHAP value, descending
+        feature_contributions.sort(key=lambda x: abs(x["shap_value"]), reverse=True)
+        
+        # Return all features (we have 11 total, manageable to show all)
+        top_features = feature_contributions
+        
+        # Normalize contribution percentages based on total absolute contribution
+        total_abs_contribution = sum(abs(f["shap_value"]) for f in top_features)
+        if total_abs_contribution > 0:
+            for feat in top_features:
+                feat["contribution_pct"] = (abs(feat["shap_value"]) / total_abs_contribution) * 100
+        
+        # Create human-readable summary (use top 3 for summary)
+        top_3 = top_features[:3]
+        increasing_factors = [f["feature"] for f in top_3 if f["impact"] == "positive"][:2]
+        decreasing_factors = [f["feature"] for f in top_3 if f["impact"] == "negative"][:2]
+        
+        summary_parts = []
+        if increasing_factors:
+            summary_parts.append(f"High {' and '.join(increasing_factors)} increase risk")
+        if decreasing_factors:
+            summary_parts.append(f"Low {' and '.join(decreasing_factors)} decrease risk")
+        
+        summary = ". ".join(summary_parts) if summary_parts else "Risk factors analyzed"
+        
+        return {
+            "top_features": top_features,
+            "summary": summary
+        }
+        
+    except Exception as e:
+        logger.error(f"Error computing SHAP explanation: {type(e).__name__}: {str(e)}", exc_info=True)
+        return None
 
 def _compute_portfolio_stats(supabase: Client, user_id: str | None = None) -> dict:
     """
@@ -401,6 +556,23 @@ def score(request: Request, req: ScoreRequest, authorization: str | None = Heade
     risk = _risk_grade(pd_hat)
     decision = "approve" if pd_hat < THRESHOLD else "review"
     
+    # Compute SHAP explanation
+    explanation_data = _compute_shap_explanation(df, pd_hat)
+    explanation = None
+    if explanation_data:
+        from schemas import Explanation, FeatureContribution
+        try:
+            feature_contribs = [
+                FeatureContribution(**feat) for feat in explanation_data["top_features"]
+            ]
+            explanation = Explanation(
+                top_features=feature_contribs,
+                summary=explanation_data["summary"]
+            )
+        except Exception as e:
+            logger.warning(f"Failed to create explanation object: {str(e)}")
+            explanation = None
+    
     # Save to Supabase if connected
     supabase = get_supabase_client(user_jwt)
     if supabase:
@@ -418,7 +590,8 @@ def score(request: Request, req: ScoreRequest, authorization: str | None = Heade
             "fico": req.fico,
             "pd": float(pd_hat),
             "risk_grade": risk,
-            "decision": decision
+            "decision": decision,
+            "explanation": explanation_data  # Store explanation as JSONB
         }
         
         # Add user_id if JWT is available and valid
@@ -498,7 +671,7 @@ def score(request: Request, req: ScoreRequest, authorization: str | None = Heade
                 "This may indicate database connectivity issues or RLS policy violations."
             )
     
-    return ScoreResponse(pd=pd_hat, risk_grade=risk, decision=decision, top_features=None)
+    return ScoreResponse(pd=pd_hat, risk_grade=risk, decision=decision, top_features=None, explanation=explanation)
 
 @app.get("/portfolio", dependencies=[Depends(require_key)])
 @limiter.limit(PORTFOLIO_RATE_LIMIT)
@@ -525,7 +698,7 @@ def portfolio(request: Request, authorization: str | None = Header(default=None)
         
         # Get recent applications (always fetch fresh, not cached)
         recent_query = supabase.table("applications").select(
-            "created_at, loan_amnt, annual_inc, pd, risk_grade, decision"
+            "id, created_at, loan_amnt, annual_inc, pd, risk_grade, decision, explanation"
         ).order("created_at", desc=True).limit(20)
         
         if is_valid_token and user_id:
@@ -607,6 +780,63 @@ def simulate_portfolio(request: Request, threshold: float = Query(0.25, ge=0.05,
         raise HTTPException(
             status_code=500, 
             detail="An error occurred while running the simulation. Please try again later."
+        )
+
+@app.get("/applications/{application_id}", dependencies=[Depends(require_key)])
+@limiter.limit(PORTFOLIO_RATE_LIMIT)
+def get_application(request: Request, application_id: str, authorization: str | None = Header(default=None)):
+    """
+    Get a single application by ID with full details including explanation.
+    Requires authentication and verifies user owns the application.
+    """
+    # Extract and verify user JWT
+    user_jwt = None
+    user_id = None
+    is_valid_token = False
+    
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required to view applications."
+        )
+    
+    user_jwt = authorization.split(" ")[1]
+    user_id, is_valid_token = get_user_id_from_token(authorization)
+    
+    if not is_valid_token or not user_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired authentication token."
+        )
+    
+    # Get Supabase client
+    supabase = get_supabase_client(user_jwt)
+    if not supabase:
+        raise HTTPException(
+            status_code=503,
+            detail="Database service is temporarily unavailable."
+        )
+    
+    try:
+        # Fetch application with RLS enforcement (user can only see their own)
+        result = supabase.table("applications").select("*").eq("id", application_id).execute()
+        
+        if not result.data or len(result.data) == 0:
+            raise HTTPException(
+                status_code=404,
+                detail="Application not found or you don't have permission to view it."
+            )
+        
+        application = result.data[0]
+        return application
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to retrieve application: {type(e).__name__}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="An error occurred while retrieving the application."
         )
 
 @app.post("/applications/save", response_model=SaveApplicationResponse, dependencies=[Depends(require_key)])

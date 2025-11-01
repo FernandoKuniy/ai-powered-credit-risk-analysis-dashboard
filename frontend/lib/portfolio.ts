@@ -1,3 +1,31 @@
+export type ApplicationDetail = {
+  id: string;
+  created_at: string;
+  loan_amnt: number;
+  annual_inc: number;
+  dti: number;
+  emp_length: number;
+  grade: string;
+  term: string;
+  purpose: string;
+  home_ownership: string;
+  state: string;
+  revol_util: number;
+  fico: number;
+  pd: number;
+  risk_grade: string;
+  decision: string;
+  explanation: {
+    top_features: Array<{
+      feature: string;
+      shap_value: number;
+      impact: "positive" | "negative";
+      contribution_pct: number;
+    }>;
+    summary: string;
+  } | null;
+};
+
 export type PortfolioData = {
   total_applications: number;
   avg_pd: number;
@@ -5,12 +33,14 @@ export type PortfolioData = {
   default_rate: number;
   grade_distribution: Record<string, number>;
   recent_applications: Array<{
+    id: string;
     created_at: string;
     loan_amnt: number;
     annual_inc: number;
     pd: number;
     risk_grade: string;
     decision: string;
+    explanation: ApplicationDetail['explanation'];
   }>;
 };
 
@@ -53,5 +83,26 @@ export async function simulatePortfolio(threshold: number, accessToken?: string)
     headers,
   });
   if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getApplication(applicationId: string, accessToken: string): Promise<ApplicationDetail> {
+  if (!accessToken) {
+    throw new Error("Authentication required");
+  }
+
+  const res = await fetch(`/api/applications/${applicationId}`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${accessToken}`,
+    },
+  });
+  
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(errorText || "Failed to fetch application");
+  }
+  
   return res.json();
 }
