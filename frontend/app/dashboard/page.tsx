@@ -143,8 +143,9 @@ export default function DashboardPage() {
     );
   }
 
+  // At this point, portfolio must exist if user is authenticated
   // Show empty state if no applications
-  if (portfolio.total_applications === 0) {
+  if (portfolio && portfolio.total_applications === 0) {
     return (
       <main>
         <Navigation />
@@ -165,6 +166,11 @@ export default function DashboardPage() {
         </div>
       </main>
     );
+  }
+
+  // At this point, portfolio must exist (already checked above)
+  if (!portfolio) {
+    return null; // This shouldn't happen, but TypeScript requires it
   }
 
   // Prepare data for charts
