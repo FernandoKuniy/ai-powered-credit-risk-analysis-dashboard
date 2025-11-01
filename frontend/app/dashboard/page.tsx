@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { getPortfolio, simulatePortfolio, getApplication, PortfolioData, SimulationData, ApplicationDetail } from "../../lib/portfolio";
+import { getPortfolio, simulatePortfolio, getApplication, deleteApplication, PortfolioData, SimulationData, ApplicationDetail } from "../../lib/portfolio";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts";
 import Navigation from "../components/Navigation";
 import { useAuth } from "../../lib/auth";
@@ -74,6 +74,35 @@ export default function DashboardPage() {
     } catch (err: any) {
       console.error("Failed to load application:", err);
       setError(err?.message || "Failed to load application details");
+    } finally {
+      setLoadingApplication(false);
+    }
+  }
+
+  async function handleDeleteApplication() {
+    if (!selectedApplication?.id || !session?.access_token) return;
+    
+    const applicationId = selectedApplication.id;
+    const confirmed = window.confirm("Are you sure you want to delete this application? This action cannot be undone.");
+    
+    if (!confirmed) return;
+    
+    try {
+      setLoadingApplication(true);
+      await deleteApplication(applicationId, session.access_token);
+      
+      // Close modal and reload portfolio
+      setSelectedApplication(null);
+      await loadPortfolio();
+      
+      // Also reload simulation if we have portfolio data
+      if (portfolio) {
+        await loadSimulation();
+      }
+    } catch (err: any) {
+      console.error("Failed to delete application:", err);
+      setError(err?.message || "Failed to delete application");
+      alert(err?.message || "Failed to delete application. Please try again.");
     } finally {
       setLoadingApplication(false);
     }
@@ -423,13 +452,23 @@ export default function DashboardPage() {
             >
               <div className="sticky top-0 bg-gray-900/95 backdrop-blur-sm border-b border-white/10 p-6 flex justify-between items-start z-10">
                 <h2 className="text-2xl font-semibold">Application Details</h2>
-                <button
-                  onClick={() => setSelectedApplication(null)}
-                  className="text-white/60 hover:text-white text-3xl leading-none w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
-                  aria-label="Close modal"
-                >
-                  ×
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleDeleteApplication}
+                    disabled={loadingApplication}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 disabled:cursor-not-allowed text-white text-sm rounded-lg transition-colors"
+                    aria-label="Delete application"
+                  >
+                    {loadingApplication ? "Deleting..." : "Delete"}
+                  </button>
+                  <button
+                    onClick={() => setSelectedApplication(null)}
+                    className="text-white/60 hover:text-white text-3xl leading-none w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
+                    aria-label="Close modal"
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
               
               <div className="p-6">

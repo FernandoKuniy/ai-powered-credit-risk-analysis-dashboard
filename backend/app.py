@@ -839,6 +839,69 @@ def get_application(request: Request, application_id: str, authorization: str | 
             detail="An error occurred while retrieving the application."
         )
 
+@app.delete("/applications/{application_id}", dependencies=[Depends(require_key)])
+@limiter.limit(PORTFOLIO_RATE_LIMIT)
+def delete_application(request: Request, application_id: str, authorization: str | None = Header(default=None)):
+    """
+    Delete an application by ID.
+    Requires authentication and verifies user ownership via RLS.
+    """
+    # Extract and verify user JWT
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required. Please sign in to delete applications."
+        )
+    
+    user_jwt = authorization.split(" ")[1]
+    user_id, is_valid_token = get_user_id_from_token(authorization)
+    
+    if not is_valid_token or not user_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired authentication token. Please sign in again."
+        )
+    
+    # Get Supabase client with user context
+    supabase = get_supabase_client(user_jwt)
+    if not supabase:
+        logger.error("Supabase client creation failed for application deletion")
+        raise HTTPException(
+            status_code=503,
+            detail="Database service is temporarily unavailable. Please try again later."
+        )
+    
+    try:
+        # Delete application (RLS will ensure user can only delete their own applications)
+        result = supabase.table("applications").delete().eq("id", application_id).execute()
+        
+        # Check if deletion was successful
+        if result.data and len(result.data) > 0:
+            logger.info(f"Application {application_id} deleted by user {user_id}")
+            # Update portfolio stats manually (until DELETE trigger is added to database)
+            # TODO: Once DELETE trigger is added, this manual update can be removed
+            try:
+                supabase.rpc("upsert_portfolio_stats", {"p_user_id": user_id}).execute()
+                logger.debug(f"Portfolio stats updated after deletion for user {user_id}")
+            except Exception as e:
+                logger.warning(f"Failed to update portfolio stats after deletion: {str(e)}")
+                # Non-critical - stats will be correct on next fetch since we compute fresh
+            return {"success": True, "message": "Application deleted successfully"}
+        else:
+            # No rows deleted - application doesn't exist or user doesn't have permission
+            raise HTTPException(
+                status_code=404,
+                detail="Application not found or you don't have permission to delete it"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting application {application_id}: {type(e).__name__}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="An error occurred while deleting the application. Please try again later."
+        )
+
 @app.post("/applications/save", response_model=SaveApplicationResponse, dependencies=[Depends(require_key)])
 @limiter.limit(SCORE_RATE_LIMIT)
 def save_application(request: Request, req: SaveApplicationRequest, authorization: str | None = Header(default=None)):

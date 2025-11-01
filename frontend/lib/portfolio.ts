@@ -106,3 +106,23 @@ export async function getApplication(applicationId: string, accessToken: string)
   
   return res.json();
 }
+
+export async function deleteApplication(applicationId: string, accessToken: string): Promise<void> {
+  if (!accessToken) {
+    throw new Error("Authentication required");
+  }
+
+  const res = await fetch(`/api/applications/${applicationId}`, {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${accessToken}`,
+    },
+  });
+  
+  if (!res.ok) {
+    const errorText = await res.text();
+    const errorData = await res.json().catch(() => ({ error: errorText }));
+    throw new Error(errorData.error || errorData.detail || "Failed to delete application");
+  }
+}
