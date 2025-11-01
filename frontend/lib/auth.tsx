@@ -20,6 +20,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileRetryTimeout, setProfileRetryTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [hasAutoSaved, setHasAutoSaved] = useState(false); // Track if we've already auto-saved for this session
 
   // Check if NEXT_PUBLIC_DEV_MODE is enabled
   const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
@@ -363,6 +364,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { error };
     }
   };
+
+  // Auto-save unsaved applications when user authenticates
+  useEffect(() => {
+    if (user && session?.access_token && !loading && !hasAutoSaved) {
+      setHasAutoSaved(true); // Mark that we're attempting auto-save
+      
+      // Import dynamically to avoid SSR issues with localStorage
+      import('../lib/api').then(({ getUnsavedApplications, saveApplication, clearUnsavedApplications }) => {
+        const unsaved = getUnsavedApplications();
+        if (unsaved.length > 0) {
+          console.log(`Found ${unsaved.length} unsaved application(s). Saving...`);
+          
+          // Save all unsaved applications
+          const savePromises = unsaved.map(app => 
+            saveApplication(app, session.access_token)
+              .catch(err => {
+                console.error('Failed to save application:', err);
+                return null; // Continue with other saves even if one fails
+              })
+          );
+          
+          Promise.all(savePromises).then(results => {
+            const successCount = results.filter(r => r !== null).length;
+            if (successCount > 0) {
+              console.log(`Successfully saved ${successCount} of ${unsaved.length} unsaved application(s)`);
+              clearUnsavedApplications();
+            }
+            // Reset flag if save fails completely so it can retry
+            if (successCount === 0) {
+              setHasAutoSaved(false);
+            }
+          });
+        }
+      }).catch(err => {
+        console.error('Error loading api module for auto-save:', err);
+        setHasAutoSaved(false); // Allow retry on error
+      });
+    }
+    
+    // Reset auto-save flag when user logs out
+    if (!user) {
+      setHasAutoSaved(false);
+    }
+  }, [user, session?.access_token, loading, hasAutoSaved]);
 
   return (
     <AuthContext.Provider

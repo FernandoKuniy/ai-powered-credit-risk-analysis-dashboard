@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { scoreApplication } from "../../lib/api";
+import { scoreApplication, addUnsavedApplication, type UnsavedApplication } from "../../lib/api";
 import Navigation from "../components/Navigation";
 import { useAuth } from "../../lib/auth";
 import InfoIcon from "../components/InfoIcon";
@@ -57,6 +57,18 @@ export default function ScorePage() {
       setResult(r);
       // Reset simulation threshold to default when new result is received
       setSimulatedThreshold(0.25);
+      
+      // If user is unauthenticated, save to localStorage for later persistence
+      if (!user && r) {
+        const unsavedApp: UnsavedApplication = {
+          ...payload,
+          pd: r.pd,
+          risk_grade: r.risk_grade,
+          decision: r.decision,
+          timestamp: new Date().toISOString(),
+        };
+        addUnsavedApplication(unsavedApp);
+      }
     } catch (err: any) {
       setError(err?.message || "Request failed");
       console.error(err);

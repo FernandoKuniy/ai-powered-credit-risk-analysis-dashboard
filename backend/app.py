@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-from schemas import ScoreRequest, ScoreResponse
+from schemas import ScoreRequest, ScoreResponse, SaveApplicationRequest, SaveApplicationResponse
 from supabase import create_client, Client
 from typing import Dict, Any
 from dotenv import load_dotenv
@@ -608,3 +608,135 @@ def simulate_portfolio(request: Request, threshold: float = Query(0.25, ge=0.05,
             status_code=500, 
             detail="An error occurred while running the simulation. Please try again later."
         )
+
+@app.post("/applications/save", response_model=SaveApplicationResponse, dependencies=[Depends(require_key)])
+@limiter.limit(SCORE_RATE_LIMIT)
+def save_application(request: Request, req: SaveApplicationRequest, authorization: str | None = Header(default=None)):
+    """
+    Save a previously scored application to the database.
+    Requires authentication. This endpoint is used to persist applications
+    that were scored while the user was unauthenticated.
+    """
+    # Extract and verify user JWT
+    user_jwt = None
+    user_id = None
+    is_valid_token = False
+    
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required. Please sign in to save applications."
+        )
+    
+    user_jwt = authorization.split(" ")[1]
+    user_id, is_valid_token = get_user_id_from_token(authorization)
+    
+    if not is_valid_token or not user_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired authentication token. Please sign in again."
+        )
+    
+    # Get Supabase client with user context
+    supabase = get_supabase_client(user_jwt)
+    if not supabase:
+        logger.error("Supabase client creation failed for application save")
+        raise HTTPException(
+            status_code=503,
+            detail="Database service is temporarily unavailable. Please try again later."
+        )
+    
+    # Prepare application data for insertion
+    application_data = {
+        "user_id": user_id,  # Always set user_id for this endpoint
+        "loan_amnt": req.loan_amnt,
+        "annual_inc": float(req.annual_inc),
+        "dti": float(req.dti),
+        "emp_length": req.emp_length,
+        "grade": req.grade,
+        "term": req.term,
+        "purpose": req.purpose,
+        "home_ownership": req.home_ownership,
+        "state": req.state,
+        "revol_util": float(req.revol_util),
+        "fico": req.fico,
+        "pd": float(req.pd),
+        "risk_grade": req.risk_grade,
+        "decision": req.decision
+    }
+    
+    # Attempt to save with retry logic
+    max_retries = 2
+    saved_successfully = False
+    application_id = None
+    
+    for attempt in range(max_retries + 1):
+        try:
+            result = supabase.table("applications").insert(application_data).execute()
+            
+            # Verify insert was successful
+            if hasattr(result, 'data') and result.data and len(result.data) > 0:
+                saved_successfully = True
+                application_id = result.data[0].get("id")
+                
+                if attempt > 0:
+                    logger.info(f"Successfully saved application after {attempt} retries")
+                
+                # Portfolio stats are automatically updated via database trigger
+                logger.debug(f"Application saved for user {user_id}; portfolio stats will be updated automatically by trigger")
+                break
+            elif hasattr(result, 'data') and (not result.data or len(result.data) == 0):
+                # Insert returned no data - could be RLS policy issue
+                logger.warning(
+                    f"Database insert returned no data (attempt {attempt + 1}/{max_retries + 1}). "
+                    "This may indicate RLS policy rejection."
+                )
+                if attempt == max_retries:
+                    raise ValueError("Insert operation returned no data after retries")
+                continue
+            else:
+                # Unexpected result structure
+                logger.warning(
+                    f"Unexpected result structure from insert (attempt {attempt + 1}/{max_retries + 1}): "
+                    f"{type(result)}"
+                )
+                if attempt == max_retries:
+                    raise ValueError("Insert operation returned unexpected result structure")
+                continue
+                
+        except Exception as e:
+            error_type = type(e).__name__
+            error_msg = str(e)
+            
+            # Determine if this is a transient error (worth retrying)
+            is_transient = any(indicator in error_msg.lower() for indicator in [
+                'timeout', 'connection', 'network', 'temporary', '503', '502', '504'
+            ])
+            
+            if attempt < max_retries and is_transient:
+                logger.warning(
+                    f"Transient error during database insert (attempt {attempt + 1}/{max_retries + 1}): "
+                    f"{error_type}: {error_msg}. Retrying..."
+                )
+                continue
+            else:
+                # Log the failure (critical or max retries reached)
+                logger.error(
+                    f"Failed to save application to database after {attempt + 1} attempts: "
+                    f"{error_type}: {error_msg}.",
+                    exc_info=True
+                )
+                break
+    
+    if not saved_successfully:
+        logger.error(f"Failed to save application for user {user_id}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to save application. Please try again or score the application again."
+        )
+    
+    return SaveApplicationResponse(
+        success=True,
+        message="Application saved successfully",
+        application_id=application_id
+    )
