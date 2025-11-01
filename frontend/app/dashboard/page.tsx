@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { getPortfolio, simulatePortfolio, getApplication, deleteApplication, PortfolioData, SimulationData, ApplicationDetail } from "../../lib/portfolio";
@@ -11,6 +12,8 @@ import InfoIcon from "../components/InfoIcon";
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658'];
 
+const ITEMS_PER_PAGE = 10;
+
 export default function DashboardPage() {
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
   const [simulation, setSimulation] = useState<SimulationData | null>(null);
@@ -19,6 +22,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedApplication, setSelectedApplication] = useState<ApplicationDetail | null>(null);
   const [loadingApplication, setLoadingApplication] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   const { session, user, loading: authLoading } = useAuth();
   const pathname = usePathname();
 
@@ -93,6 +97,7 @@ export default function DashboardPage() {
       
       // Close modal and reload portfolio
       setSelectedApplication(null);
+      setCurrentPage(1); // Reset to first page after deletion
       await loadPortfolio();
       
       // Also reload simulation if we have portfolio data
@@ -402,7 +407,9 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {portfolio.recent_applications.slice(0, 10).map((app, idx) => (
+                  {portfolio.recent_applications
+                    .slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
+                    .map((app, idx) => (
                     <tr 
                       key={app.id || idx} 
                       className="border-b border-gray-800 hover:bg-white/5 cursor-pointer transition-colors"
@@ -435,6 +442,60 @@ export default function DashboardPage() {
                 </tbody>
               </table>
             </div>
+            {/* Pagination Controls */}
+            {portfolio.recent_applications.length > ITEMS_PER_PAGE && (
+              <div className="mt-4 flex items-center justify-between px-4">
+                <div className="text-sm text-white/60">
+                  Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, portfolio.recent_applications.length)} of {portfolio.recent_applications.length} applications
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 disabled:bg-white/5 disabled:text-white/30 disabled:cursor-not-allowed text-white text-sm transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: Math.ceil(portfolio.recent_applications.length / ITEMS_PER_PAGE) }, (_, i) => i + 1)
+                      .filter(page => {
+                        // Show first page, last page, current page, and pages around current
+                        const totalPages = Math.ceil(portfolio.recent_applications.length / ITEMS_PER_PAGE);
+                        return page === 1 || 
+                               page === totalPages || 
+                               (page >= currentPage - 1 && page <= currentPage + 1);
+                      })
+                      .map((page, idx, array) => {
+                        // Add ellipsis if there's a gap
+                        const prevPage = array[idx - 1];
+                        const showEllipsis = prevPage && page - prevPage > 1;
+                        return (
+                          <React.Fragment key={page}>
+                            {showEllipsis && <span className="text-white/40 px-1">...</span>}
+                            <button
+                              onClick={() => setCurrentPage(page)}
+                              className={`px-3 py-1 rounded-lg text-sm transition-colors ${
+                                currentPage === page
+                                  ? 'bg-blue-600 text-white'
+                                  : 'bg-white/10 hover:bg-white/20 text-white/70'
+                              }`}
+                            >
+                              {page}
+                            </button>
+                          </React.Fragment>
+                        );
+                      })}
+                  </div>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(Math.ceil(portfolio.recent_applications.length / ITEMS_PER_PAGE), prev + 1))}
+                    disabled={currentPage >= Math.ceil(portfolio.recent_applications.length / ITEMS_PER_PAGE)}
+                    className="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 disabled:bg-white/5 disabled:text-white/30 disabled:cursor-not-allowed text-white text-sm transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </section>
         )}
 

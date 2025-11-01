@@ -696,10 +696,11 @@ def portfolio(request: Request, authorization: str | None = Header(default=None)
         # Get portfolio stats from cache or compute fresh (uses row count comparison)
         stats = _get_or_compute_portfolio_stats(supabase, user_id if is_valid_token and user_id else None)
         
-        # Get recent applications (always fetch fresh, not cached)
+        # Get all applications (always fetch fresh, not cached)
+        # Remove limit to fetch all applications for pagination
         recent_query = supabase.table("applications").select(
             "id, created_at, loan_amnt, annual_inc, pd, risk_grade, decision, explanation"
-        ).order("created_at", desc=True).limit(20)
+        ).order("created_at", desc=True)
         
         if is_valid_token and user_id:
             recent_query = recent_query.eq("user_id", user_id)
