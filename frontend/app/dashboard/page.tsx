@@ -7,13 +7,14 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import Navigation from "../components/Navigation";
 import { useAuth } from "../../lib/auth";
 import ExplanationDisplay from "../components/ExplanationDisplay";
+import InfoIcon from "../components/InfoIcon";
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658'];
 
 export default function DashboardPage() {
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
   const [simulation, setSimulation] = useState<SimulationData | null>(null);
-  const [threshold, setThreshold] = useState(0.25);
+  const [threshold, setThreshold] = useState(0.15);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedApplication, setSelectedApplication] = useState<ApplicationDetail | null>(null);
@@ -211,7 +212,7 @@ export default function DashboardPage() {
   }));
 
   const thresholdData = [];
-  for (let t = 0.05; t <= 0.50; t += 0.05) {
+  for (let t = 0.01; t <= 0.25; t += 0.02) {
     // This would ideally come from the backend, but for now we'll simulate
     const approved = portfolio.total_applications * (1 - t);
     thresholdData.push({
@@ -298,20 +299,20 @@ export default function DashboardPage() {
                 <label className="text-sm text-white/70">
                   Approval Threshold: <span className="font-semibold text-white">{(threshold * 100).toFixed(0)}%</span>
                 </label>
-                <span className="text-xs text-white/50">Range: 5% - 50%</span>
+                <span className="text-xs text-white/50">Range: 1% - 25%</span>
               </div>
               <input
                 type="range"
-                min="0.05"
-                max="0.50"
+                min="0.01"
+                max="0.25"
                 step="0.01"
                 value={threshold}
                 onChange={(e) => setThreshold(parseFloat(e.target.value))}
                 className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
               />
               <div className="flex justify-between text-xs text-white/50 mt-1">
-                <span>5%</span>
-                <span>50%</span>
+                <span>1%</span>
+                <span>25%</span>
               </div>
             </div>
             
@@ -348,7 +349,7 @@ export default function DashboardPage() {
 
         {/* Recent Applications Table */}
         {portfolio.recent_applications.length > 0 && (
-          <section className="card">
+          <section className="card overflow-visible">
             <h3 className="text-lg font-semibold mb-4">Recent Applications</h3>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -359,7 +360,16 @@ export default function DashboardPage() {
                     <th className="text-left py-2">Income</th>
                     <th className="text-left py-2">PD</th>
                     <th className="text-left py-2">Grade</th>
-                    <th className="text-left py-2">Decision</th>
+                    <th className="text-left py-2">
+                      <div className="flex items-center gap-2">
+                        Decision
+                        <InfoIcon 
+                          position="above"
+                          usePortal={true}
+                          explanation="The decision (approve/review) is based on a 15% probability of default (PD) threshold. Applications with PD below 15% are auto-approved, while those with PD at or above 15% require manual review." 
+                        />
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>

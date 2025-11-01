@@ -62,7 +62,7 @@ def require_key(x_api_key: str | None = Header(default=None)):
     if not x_api_key or x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-THRESHOLD = 0.25  # approval cutoff on PD
+THRESHOLD = 0.15  # approval cutoff on PD
 
 # ---- Supabase client ----
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -478,7 +478,7 @@ def _get_or_compute_portfolio_stats(supabase: Client, user_id: str | None = None
                     "approval_rate": stats["approval_rate"],
                     "default_rate": stats["default_rate"],
                     "grade_distribution": stats["grade_distribution"],
-                    "threshold": 0.25
+                    "threshold": THRESHOLD
                 }
                 update_result = supabase.table("portfolio_stats").update(stats_for_cache).eq("user_id", user_id).execute()
                 if not update_result.data or len(update_result.data) == 0:
@@ -724,7 +724,7 @@ def portfolio(request: Request, authorization: str | None = Header(default=None)
 
 @app.get("/portfolio/simulate", dependencies=[Depends(require_key)])
 @limiter.limit(PORTFOLIO_RATE_LIMIT)
-def simulate_portfolio(request: Request, threshold: float = Query(0.25, ge=0.05, le=0.50), authorization: str | None = Header(default=None)):
+def simulate_portfolio(request: Request, threshold: float = Query(0.15, ge=0.01, le=0.25), authorization: str | None = Header(default=None)):
     # Extract user JWT from Authorization header
     user_jwt = None
     if authorization and authorization.startswith("Bearer "):

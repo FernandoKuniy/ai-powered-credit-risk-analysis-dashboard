@@ -11,7 +11,7 @@ export default function ScorePage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const [simulatedThreshold, setSimulatedThreshold] = useState(0.25); // Default threshold matching backend
+  const [simulatedThreshold, setSimulatedThreshold] = useState(0.15); // Default threshold matching backend
   const [submittedGrade, setSubmittedGrade] = useState<string | null>(null); // Store the input grade for display
   const { session, user } = useAuth();
 
@@ -57,7 +57,7 @@ export default function ScorePage() {
       const r = await scoreApplication(payload, session?.access_token);
       setResult(r);
       // Reset simulation threshold to default when new result is received
-      setSimulatedThreshold(0.25);
+      setSimulatedThreshold(0.15);
       
       // If user is unauthenticated, save to localStorage for later persistence
       if (!user && r) {
@@ -210,7 +210,7 @@ export default function ScorePage() {
                 <div className="card">
                   <div className="text-white/60">Decision{isAuthenticated ? " (Saved)" : ""}</div>
                   <div className="text-2xl font-semibold capitalize">{result.decision}</div>
-                  <div className="text-xs text-white/50 mt-1">Threshold: 25%</div>
+                  <div className="text-xs text-white/50 mt-1">Threshold: 15%</div>
                 </div>
               </div>
               
@@ -259,20 +259,20 @@ export default function ScorePage() {
                     <label className="text-sm text-white/70">
                       Approval Threshold: <span className="font-semibold text-white">{(simulatedThreshold * 100).toFixed(0)}%</span>
                     </label>
-                    <span className="text-xs text-white/50">Range: 5% - 50%</span>
+                    <span className="text-xs text-white/50">Range: 1% - 25%</span>
                   </div>
                   <input
                     type="range"
-                    min="0.05"
-                    max="0.50"
+                    min="0.01"
+                    max="0.25"
                     step="0.01"
                     value={simulatedThreshold}
                     onChange={(e) => setSimulatedThreshold(parseFloat(e.target.value))}
                     className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
                   />
                   <div className="flex justify-between text-xs text-white/50 mt-1">
-                    <span>5%</span>
-                    <span>50%</span>
+                    <span>1%</span>
+                    <span>25%</span>
                   </div>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2 pt-4 border-t border-white/10">

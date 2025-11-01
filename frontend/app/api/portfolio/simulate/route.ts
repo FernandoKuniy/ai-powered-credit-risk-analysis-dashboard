@@ -11,7 +11,7 @@ export async function GET(req: Request) {
   }
 
   const { searchParams } = new URL(req.url);
-  const threshold = searchParams.get("threshold") || "0.25";
+  const threshold = searchParams.get("threshold") || "0.15";
   
   const baseUrl = process.env.NEXT_PUBLIC_API_URL!;
   
