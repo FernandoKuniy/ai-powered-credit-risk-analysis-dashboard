@@ -213,35 +213,6 @@ export default function ScorePage() {
                 </div>
               </div>
               
-              {/* Sign-up prompt for unauthenticated users */}
-              {!isAuthenticated && (
-                <div className="mt-6 p-4 bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-lg">
-                  <div className="flex items-start gap-3">
-                    <div className="text-2xl">💾</div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold mb-2">Save this result to your dashboard</h4>
-                      <p className="text-sm text-white/80 mb-4">
-                        This scoring result is not saved. Create a free account to save your applications, track your portfolio, and access detailed analytics.
-                      </p>
-                      <div className="flex flex-col sm:flex-row gap-3">
-                        <Link 
-                          href="/auth?mode=signup" 
-                          className="btn px-6 py-2 text-center"
-                        >
-                          Sign Up Free
-                        </Link>
-                        <Link 
-                          href="/auth?mode=login" 
-                          className="px-6 py-2 text-center text-white/80 hover:text-white border border-white/20 rounded-xl hover:border-white/40 transition-colors"
-                        >
-                          Already have an account? Sign In
-                        </Link>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
               {/* Grade comparison */}
               {submittedGrade && submittedGrade !== result.risk_grade && (
                 <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-700/30 rounded-lg">
@@ -328,6 +299,35 @@ export default function ScorePage() {
                 </div>
               </div>
             </div>
+
+            {/* Sign-up prompt for unauthenticated users - placed last */}
+            {!isAuthenticated && (
+              <div className="mt-6 p-4 bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <div className="text-2xl">💾</div>
+                  <div className="flex-1">
+                    <h4 className="font-semibold mb-2">Save this result to your dashboard</h4>
+                    <p className="text-sm text-white/80 mb-4">
+                      This scoring result is not saved. Create a free account to save your applications, track your portfolio, and access detailed analytics.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Link 
+                        href="/auth?mode=signup" 
+                        className="btn px-6 py-2 text-center"
+                      >
+                        Sign Up Free
+                      </Link>
+                      <Link 
+                        href="/auth?mode=login" 
+                        className="px-6 py-2 text-center text-white/80 hover:text-white border border-white/20 rounded-xl hover:border-white/40 transition-colors"
+                      >
+                        Already have an account? Sign In
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
         </div>
