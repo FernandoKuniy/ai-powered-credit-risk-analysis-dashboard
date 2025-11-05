@@ -1,1 +1,19 @@
-{"feature_order": ["loan_amnt", "annual_inc", "dti", "emp_length", "grade", "term", "purpose", "home_ownership", "state", "revol_util", "fico", "loan_to_income", "fico_dti_interaction", "revol_util_squared", "annual_inc_log"]}
+{
+  "feature_order": [
+    "loan_amnt",
+    "annual_inc",
+    "dti",
+    "emp_length",
+    "revol_util",
+    "fico",
+    "loan_to_income",
+    "fico_dti_interaction",
+    "revol_util_squared",
+    "annual_inc_log",
+    "grade",
+    "term",
+    "purpose",
+    "home_ownership",
+    "state"
+  ]
+}

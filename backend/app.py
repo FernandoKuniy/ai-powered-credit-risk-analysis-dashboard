@@ -262,8 +262,17 @@ def _compute_shap_explanation(df: pd.DataFrame, pd_value: float) -> Dict[str, An
     
     try:
         # Transform input through preprocessing pipeline
+        # ColumnTransformer expects: all numerical features first, then all categorical
         preprocessor = model.named_steps['pre']
-        transformed_df = preprocessor.transform(df)
+        num_cols = [
+            "loan_amnt", "annual_inc", "dti", "emp_length", "revol_util", "fico",
+            "loan_to_income", "fico_dti_interaction", "revol_util_squared", "annual_inc_log"
+        ]
+        cat_cols = ["grade", "term", "purpose", "home_ownership", "state"]
+        expected_order = num_cols + cat_cols
+        df_ordered = df[expected_order]
+        
+        transformed_df = preprocessor.transform(df_ordered)
         
         # Compute SHAP values on transformed features
         shap_values = shap_explainer.shap_values(transformed_df)
@@ -276,16 +285,13 @@ def _compute_shap_explanation(df: pd.DataFrame, pd_value: float) -> Dict[str, An
         if shap_values.ndim > 1:
             shap_values = shap_values[0]  # Get single row
         
-        # Get original feature names and map SHAP values back
-        original_features = ['loan_amnt', 'annual_inc', 'dti', 'emp_length', 'revol_util', 'fico',
-                            'grade', 'term', 'purpose', 'home_ownership', 'state']
-        
         shap_aggregated = {}
         
-        # Process numeric features (first 6)
-        numeric_features = ['loan_amnt', 'annual_inc', 'dti', 'emp_length', 'revol_util', 'fico']
-        num_transformer = preprocessor.named_transformers_['num']
-        num_feature_indices = list(range(len(numeric_features)))
+        # Process numeric features (all 10: 6 original + 4 engineered)
+        numeric_features = [
+            'loan_amnt', 'annual_inc', 'dti', 'emp_length', 'revol_util', 'fico',
+            'loan_to_income', 'fico_dti_interaction', 'revol_util_squared', 'annual_inc_log'
+        ]
         
         for i, feat_name in enumerate(numeric_features):
             if i < len(shap_values):
@@ -530,53 +536,36 @@ def _get_or_compute_portfolio_stats(supabase: Client, user_id: str | None = None
     return stats
 
 def _to_dataframe(req: ScoreRequest) -> pd.DataFrame:
-    # Create DataFrame with columns in the order expected by ColumnTransformer:
-    # All numerical features first, then all categorical features
-    # This matches the order used during training
     row = {
-        # Numerical features (in order expected by ColumnTransformer)
         "loan_amnt": req.loan_amnt,
         "annual_inc": req.annual_inc,
         "dti": req.dti,
         "emp_length": req.emp_length,
-        "revol_util": req.revol_util,
-        "fico": req.fico,
-        # Categorical features
         "grade": req.grade,
         "term": req.term,
         "purpose": req.purpose,
         "home_ownership": req.home_ownership,
         "state": req.state,
+        "revol_util": req.revol_util,
+        "fico": req.fico,
     }
     df = pd.DataFrame([row])
     
     # Add engineered features (matching training script)
-    # These must be added in the order they appear in the ColumnTransformer num list
     df["loan_to_income"] = df["loan_amnt"] / (df["annual_inc"] + 1)
     df["fico_dti_interaction"] = df["fico"] * (1 / (df["dti"] + 1))
     df["revol_util_squared"] = df["revol_util"] ** 2
     df["annual_inc_log"] = np.log1p(df["annual_inc"])
     
-    # Reorder columns to match ColumnTransformer expectation:
-    # All numerical (including engineered) then all categorical
-    num_cols = [
-        "loan_amnt", "annual_inc", "dti", "emp_length", "revol_util", "fico",
-        "loan_to_income", "fico_dti_interaction", "revol_util_squared", "annual_inc_log"
-    ]
-    cat_cols = ["grade", "term", "purpose", "home_ownership", "state"]
-    expected_order = num_cols + cat_cols
-    
-    # Verify all required columns are present
-    missing = [c for c in expected_order if c not in df.columns]
-    if missing:
-        logger.error(f"Missing required features: {missing}")
-        raise HTTPException(
-            status_code=400, 
-            detail="Invalid request: missing required fields. Please check your input and try again."
-        )
-    
-    # Reorder to match ColumnTransformer expectation
-    df = df[expected_order]
+    if feature_order:
+        missing = [c for c in feature_order if c not in df.columns]
+        if missing:
+            logger.error(f"Missing required features: {missing}")
+            raise HTTPException(
+                status_code=400, 
+                detail="Invalid request: missing required fields. Please check your input and try again."
+            )
+        df = df[feature_order]
     return df
 
 @app.get("/health")
@@ -613,7 +602,18 @@ def score(request: Request, req: ScoreRequest, authorization: str | None = Heade
         # Use calibrated model if available, otherwise fall back to base model
         if calibrated_model is not None:
             # Transform data using pipeline preprocessing
-            X_transformed = model.named_steps['pre'].transform(df)
+            # ColumnTransformer expects: all numerical features first, then all categorical
+            # Reorder DataFrame to match ColumnTransformer's expected input order
+            preprocessor = model.named_steps['pre']
+            num_cols = [
+                "loan_amnt", "annual_inc", "dti", "emp_length", "revol_util", "fico",
+                "loan_to_income", "fico_dti_interaction", "revol_util_squared", "annual_inc_log"
+            ]
+            cat_cols = ["grade", "term", "purpose", "home_ownership", "state"]
+            expected_order = num_cols + cat_cols
+            df_ordered = df[expected_order]
+            
+            X_transformed = preprocessor.transform(df_ordered)
             # Get calibrated prediction
             pd_hat = float(calibrated_model.predict_proba(X_transformed)[0, 1])
         else:
