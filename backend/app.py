@@ -195,21 +195,32 @@ def get_user_id_from_token(authorization: str | None) -> tuple[str | None, bool]
 
 # ---- Load artifacts at startup ----
 MODEL_PATH = "models/model.pkl"
+CALIBRATED_MODEL_PATH = "models/model_calibrated.pkl"
 META_PATH = "models/feature_meta.json"
 
 model = None
+calibrated_model = None
 feature_order: list[str] | None = None
 shap_explainer = None
 background_data = None  # Sample of training data for SHAP
 
 def _load_artifacts():
-    global model, feature_order, shap_explainer, background_data
+    global model, calibrated_model, feature_order, shap_explainer, background_data
     if not os.path.exists(MODEL_PATH):
         return False
     model = joblib.load(MODEL_PATH)
+    
+    # Load calibrated model if available
+    if os.path.exists(CALIBRATED_MODEL_PATH):
+        calibrated_model = joblib.load(CALIBRATED_MODEL_PATH)
+        logger.info("Calibrated model loaded successfully")
+    else:
+        logger.warning("Calibrated model not found, using base model")
+        calibrated_model = None
+    
     with open(META_PATH) as f:
         meta = json.load(f)
-    feature_order = meta["feature_order"]
+        feature_order = meta["feature_order"]
     
     # Initialize SHAP explainer with background data
     # For XGBoost, we can use TreeExplainer which is fast
@@ -533,6 +544,13 @@ def _to_dataframe(req: ScoreRequest) -> pd.DataFrame:
         "fico": req.fico,
     }
     df = pd.DataFrame([row])
+    
+    # Add engineered features (matching training script)
+    df["loan_to_income"] = df["loan_amnt"] / (df["annual_inc"] + 1)
+    df["fico_dti_interaction"] = df["fico"] * (1 / (df["dti"] + 1))
+    df["revol_util_squared"] = df["revol_util"] ** 2
+    df["annual_inc_log"] = np.log1p(df["annual_inc"])
+    
     if feature_order:
         missing = [c for c in feature_order if c not in df.columns]
         if missing:
@@ -575,7 +593,15 @@ def score(request: Request, req: ScoreRequest, authorization: str | None = Heade
     
     df = _to_dataframe(req)
     try:
-        pd_hat = float(model.predict_proba(df)[:, 1][0])
+        # Use calibrated model if available, otherwise fall back to base model
+        if calibrated_model is not None:
+            # Transform data using pipeline preprocessing
+            X_transformed = model.named_steps['pre'].transform(df)
+            # Get calibrated prediction
+            pd_hat = float(calibrated_model.predict_proba(X_transformed)[0, 1])
+        else:
+            # Fall back to base model
+            pd_hat = float(model.predict_proba(df)[:, 1][0])
     except Exception as e:
         logger.error(f"ML model inference failed: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(

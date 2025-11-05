@@ -15,7 +15,7 @@
 - FICO: 780
 
 **Expected Results:**
-- PD: ~2-4%
+- PD: ~3-7% (based on Grade A: 5.0%, adjusted for excellent FICO 780 and low DTI 8.5)
 - Risk Grade: A (PD < 5%)
 - Decision: approve (PD < 15%)
 
@@ -38,7 +38,7 @@
 - FICO: 720
 
 **Expected Results:**
-- PD: ~6-9%
+- PD: ~9-13% (based on Grade B: 11.3%, adjusted for good FICO 720 and moderate DTI 12.0)
 - Risk Grade: B (PD < 10%)
 - Decision: approve (PD < 15%)
 
@@ -61,9 +61,9 @@
 - FICO: 680
 
 **Expected Results:**
-- PD: ~12-16%
-- Risk Grade: B or C (depending on exact PD)
-- Decision: approve if PD < 15%, otherwise review
+- PD: ~18-25% (based on Grade C: 19.8%, adjusted for average FICO 680, high DTI 18.5, and 60-month term)
+- Risk Grade: C (PD < 20%)
+- Decision: review (PD >= 15%)
 
 **Rationale:** Average income, moderate-high DTI, average FICO → moderate risk
 
@@ -84,8 +84,8 @@
 - FICO: 650
 
 **Expected Results:**
-- PD: ~18-25%
-- Risk Grade: C or D (depending on exact PD)
+- PD: ~25-32% (based on Grade D: 27.8%, adjusted for lower FICO 650, high DTI 22.0, and 60-month term)
+- Risk Grade: D (PD < 30%)
 - Decision: review (PD >= 15%)
 
 **Rationale:** Lower income, high DTI, lower FICO, shorter employment, high utilization → higher risk
@@ -107,8 +107,8 @@
 - FICO: 620
 
 **Expected Results:**
-- PD: ~28-35%
-- Risk Grade: D or E (depending on exact PD)
+- PD: ~32-40% (based on Grade E: 34.7%, adjusted for lower FICO 620, very high DTI 28.0, and 60-month term)
+- Risk Grade: E (PD < 40%)
 - Decision: review (PD >= 15%)
 
 **Rationale:** Lower income relative to loan, high DTI, lower FICO, short employment, high utilization → high risk
@@ -130,8 +130,8 @@
 - FICO: 635
 
 **Expected Results:**
-- PD: ~30-40%
-- Risk Grade: D or E
+- PD: ~40-50% (based on Grade F: 44.3%, adjusted for lower FICO 635, high DTI 25.0, and 60-month term)
+- Risk Grade: F (PD < 60%)
 - Decision: review (PD >= 15%)
 
 **Rationale:** High loan-to-income ratio, moderate DTI but low income, lower FICO → high risk
@@ -153,8 +153,8 @@
 - FICO: 580
 
 **Expected Results:**
-- PD: ~45-60%
-- Risk Grade: E or F
+- PD: ~48-58% (based on Grade G: 51.3%, adjusted for poor FICO 580, very high DTI 35.0, and 60-month term)
+- Risk Grade: F or G (depending on exact PD)
 - Decision: review (PD >= 15%)
 
 **Rationale:** Very low income, very high DTI, poor FICO, short employment, maxed out credit → very high risk
@@ -176,8 +176,8 @@
 - FICO: 600
 
 **Expected Results:**
-- PD: ~20-30%
-- Risk Grade: C or D
+- PD: ~25-35% (based on Grade D: 27.8%, adjusted for low FICO 600, very high DTI 30.0, but high income helps somewhat)
+- Risk Grade: D or E (depending on exact PD)
 - Decision: review (PD >= 15%)
 
 **Rationale:** High income helps, but very high DTI, low FICO, short employment, high utilization → elevated risk despite income
@@ -199,8 +199,8 @@
 - FICO: 750
 
 **Expected Results:**
-- PD: ~3-6%
-- Risk Grade: A or B
+- PD: ~6-10% (based on Grade B: 11.3%, adjusted for excellent FICO 750, low DTI 10.0, and very low loan-to-income ratio)
+- Risk Grade: B (PD < 10%)
 - Decision: approve (PD < 15%)
 
 **Rationale:** Very low loan relative to income, excellent profile, low utilization → very low risk
@@ -222,9 +222,9 @@
 - FICO: 670
 
 **Expected Results:**
-- PD: ~13-15%
-- Risk Grade: B or C
-- Decision: approve (PD should be just below 15% threshold)
+- PD: ~16-22% (based on Grade C: 19.8%, adjusted for moderate FICO 670, moderate DTI 16.0, and 36-month term)
+- Risk Grade: C (PD < 20%)
+- Decision: review (PD >= 15%)
 
 **Rationale:** Mixed signals - moderate income, moderate DTI, decent FICO, but purpose and other factors could push it near threshold
 

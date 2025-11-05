@@ -1,0 +1,171 @@
+{
+  "summary": {
+    "total": 10,
+    "passed": 4,
+    "pass_rate": 0.4
+  },
+  "results": [
+    {
+      "test_case": "Test Case 1: Excellent Credit Profile",
+      "predicted_pd": 0.02222222276031971,
+      "expected_pd_min": 0.03,
+      "expected_pd_max": 0.07,
+      "in_range": false,
+      "predicted_grade": "A",
+      "expected_grades": [
+        "A"
+      ],
+      "grade_match": true,
+      "predicted_decision": "approve",
+      "expected_decision": "approve",
+      "decision_match": true,
+      "passed": false
+    },
+    {
+      "test_case": "Test Case 2: Good Credit Profile",
+      "predicted_pd": 0.12328199297189713,
+      "expected_pd_min": 0.09,
+      "expected_pd_max": 0.13,
+      "in_range": true,
+      "predicted_grade": "C",
+      "expected_grades": [
+        "B"
+      ],
+      "grade_match": false,
+      "predicted_decision": "approve",
+      "expected_decision": "approve",
+      "decision_match": true,
+      "passed": true
+    },
+    {
+      "test_case": "Test Case 3: Average Credit Profile",
+      "predicted_pd": 0.2861952483654022,
+      "expected_pd_min": 0.18,
+      "expected_pd_max": 0.25,
+      "in_range": false,
+      "predicted_grade": "D",
+      "expected_grades": [
+        "C"
+      ],
+      "grade_match": false,
+      "predicted_decision": "review",
+      "expected_decision": "review",
+      "decision_match": true,
+      "passed": false
+    },
+    {
+      "test_case": "Test Case 4: Moderate Risk Profile",
+      "predicted_pd": 0.36036035418510437,
+      "expected_pd_min": 0.25,
+      "expected_pd_max": 0.32,
+      "in_range": false,
+      "predicted_grade": "E",
+      "expected_grades": [
+        "D"
+      ],
+      "grade_match": false,
+      "predicted_decision": "review",
+      "expected_decision": "review",
+      "decision_match": true,
+      "passed": false
+    },
+    {
+      "test_case": "Test Case 5: Higher Risk Profile",
+      "predicted_pd": 0.3625730872154236,
+      "expected_pd_min": 0.32,
+      "expected_pd_max": 0.4,
+      "in_range": true,
+      "predicted_grade": "E",
+      "expected_grades": [
+        "E"
+      ],
+      "grade_match": true,
+      "predicted_decision": "review",
+      "expected_decision": "review",
+      "decision_match": true,
+      "passed": true
+    },
+    {
+      "test_case": "Test Case 6: Low Income, High Loan Risk",
+      "predicted_pd": 0.5454545617103577,
+      "expected_pd_min": 0.4,
+      "expected_pd_max": 0.5,
+      "in_range": false,
+      "predicted_grade": "F",
+      "expected_grades": [
+        "F"
+      ],
+      "grade_match": true,
+      "predicted_decision": "review",
+      "expected_decision": "review",
+      "decision_match": true,
+      "passed": false
+    },
+    {
+      "test_case": "Test Case 7: Very Poor Credit Profile",
+      "predicted_pd": 0.5714284777641296,
+      "expected_pd_min": 0.48,
+      "expected_pd_max": 0.58,
+      "in_range": true,
+      "predicted_grade": "F",
+      "expected_grades": [
+        "F",
+        "G"
+      ],
+      "grade_match": true,
+      "predicted_decision": "review",
+      "expected_decision": "review",
+      "decision_match": true,
+      "passed": true
+    },
+    {
+      "test_case": "Test Case 8: Edge Case - High Income, Low Credit",
+      "predicted_pd": 0.23495706915855408,
+      "expected_pd_min": 0.25,
+      "expected_pd_max": 0.35,
+      "in_range": false,
+      "predicted_grade": "D",
+      "expected_grades": [
+        "D",
+        "E"
+      ],
+      "grade_match": true,
+      "predicted_decision": "review",
+      "expected_decision": "review",
+      "decision_match": true,
+      "passed": false
+    },
+    {
+      "test_case": "Test Case 9: Edge Case - Low Loan, Good Profile",
+      "predicted_pd": 0.07924922555685043,
+      "expected_pd_min": 0.06,
+      "expected_pd_max": 0.1,
+      "in_range": true,
+      "predicted_grade": "B",
+      "expected_grades": [
+        "B"
+      ],
+      "grade_match": true,
+      "predicted_decision": "approve",
+      "expected_decision": "approve",
+      "decision_match": true,
+      "passed": true
+    },
+    {
+      "test_case": "Test Case 10: Edge Case - Just Below Threshold",
+      "predicted_pd": 0.23495706915855408,
+      "expected_pd_min": 0.16,
+      "expected_pd_max": 0.22,
+      "in_range": false,
+      "predicted_grade": "D",
+      "expected_grades": [
+        "C"
+      ],
+      "grade_match": false,
+      "predicted_decision": "review",
+      "expected_decision": "review",
+      "decision_match": true,
+      "passed": false
+    }
+  ]
+}
