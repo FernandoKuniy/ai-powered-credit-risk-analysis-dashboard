@@ -29,6 +29,35 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Suppress verbose logging from third-party libraries
+# HTTP/Network libraries
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("hpack").setLevel(logging.WARNING)
+logging.getLogger("hpack.hpack").setLevel(logging.WARNING)
+logging.getLogger("hpack.table").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
+logging.getLogger("requests").setLevel(logging.WARNING)
+logging.getLogger("requests.packages.urllib3").setLevel(logging.WARNING)
+
+# Supabase/PostgREST libraries
+logging.getLogger("supabase").setLevel(logging.WARNING)
+logging.getLogger("postgrest").setLevel(logging.WARNING)
+logging.getLogger("realtime").setLevel(logging.WARNING)
+logging.getLogger("storage").setLevel(logging.WARNING)
+
+# Data science libraries
+logging.getLogger("pandas").setLevel(logging.WARNING)
+logging.getLogger("numpy").setLevel(logging.WARNING)
+logging.getLogger("shap").setLevel(logging.WARNING)
+
+# Other common libraries
+logging.getLogger("joblib").setLevel(logging.WARNING)
+logging.getLogger("fastapi").setLevel(logging.WARNING)
+logging.getLogger("uvicorn").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
 app = FastAPI()
 
 # --- Rate Limiting ---
