@@ -155,8 +155,8 @@ export default function HomePage() {
               <h4 className="font-semibold mb-1">Real-Time Results</h4>
               <p className="text-white/70 text-sm">Get instant risk assessments without waiting for manual underwriting processes.</p>
             </div>
-          </div>
-        </div>
+      </div>
+      </div>
       </section>
 
       {/* Final CTA Section */}

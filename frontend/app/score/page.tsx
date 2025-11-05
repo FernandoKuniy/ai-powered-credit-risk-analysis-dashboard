@@ -81,9 +81,9 @@ export default function ScorePage() {
   const isAuthenticated = !!user;
 
   return (
-    <main>
-      <Navigation />
-      <div className="card">
+      <main>
+        <Navigation />
+        <div className="card">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">Scoring Form</h2>
           {!isAuthenticated && (

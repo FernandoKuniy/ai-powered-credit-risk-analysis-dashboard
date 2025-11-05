@@ -213,24 +213,24 @@ export default function DashboardPage() {
   // Show empty state if no applications
   if (portfolio && portfolio.total_applications === 0) {
     return (
-      <main>
-        <Navigation />
-        <div className="card">
-          <div className="text-center py-12">
-            <div className="text-6xl mb-4">📊</div>
-            <h2 className="text-2xl font-semibold mb-4">No Applications Yet</h2>
-            <p className="text-white/70 mb-6">
-              You haven't submitted any loan applications yet. Get started by scoring your first application!
-            </p>
+        <main>
+          <Navigation />
+          <div className="card">
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">📊</div>
+              <h2 className="text-2xl font-semibold mb-4">No Applications Yet</h2>
+              <p className="text-white/70 mb-6">
+                You haven't submitted any loan applications yet. Get started by scoring your first application!
+              </p>
             <Link 
-              href="/score" 
-              className="btn inline-block"
-            >
-              Score Your First Application
+                href="/score" 
+                className="btn inline-block"
+              >
+                Score Your First Application
             </Link>
+            </div>
           </div>
-        </div>
-      </main>
+        </main>
     );
   }
 
@@ -256,9 +256,9 @@ export default function DashboardPage() {
   }
 
   return (
-    <main>
-      <Navigation />
-      <div className="grid gap-6">
+      <main>
+        <Navigation />
+        <div className="grid gap-6">
         {/* KPI Cards */}
         <section className="grid gap-4 md:grid-cols-4">
           <div className="card">

@@ -530,36 +530,53 @@ def _get_or_compute_portfolio_stats(supabase: Client, user_id: str | None = None
     return stats
 
 def _to_dataframe(req: ScoreRequest) -> pd.DataFrame:
+    # Create DataFrame with columns in the order expected by ColumnTransformer:
+    # All numerical features first, then all categorical features
+    # This matches the order used during training
     row = {
+        # Numerical features (in order expected by ColumnTransformer)
         "loan_amnt": req.loan_amnt,
         "annual_inc": req.annual_inc,
         "dti": req.dti,
         "emp_length": req.emp_length,
+        "revol_util": req.revol_util,
+        "fico": req.fico,
+        # Categorical features
         "grade": req.grade,
         "term": req.term,
         "purpose": req.purpose,
         "home_ownership": req.home_ownership,
         "state": req.state,
-        "revol_util": req.revol_util,
-        "fico": req.fico,
     }
     df = pd.DataFrame([row])
     
     # Add engineered features (matching training script)
+    # These must be added in the order they appear in the ColumnTransformer num list
     df["loan_to_income"] = df["loan_amnt"] / (df["annual_inc"] + 1)
     df["fico_dti_interaction"] = df["fico"] * (1 / (df["dti"] + 1))
     df["revol_util_squared"] = df["revol_util"] ** 2
     df["annual_inc_log"] = np.log1p(df["annual_inc"])
     
-    if feature_order:
-        missing = [c for c in feature_order if c not in df.columns]
-        if missing:
-            logger.error(f"Missing required features: {missing}")
-            raise HTTPException(
-                status_code=400, 
-                detail="Invalid request: missing required fields. Please check your input and try again."
-            )
-        df = df[feature_order]
+    # Reorder columns to match ColumnTransformer expectation:
+    # All numerical (including engineered) then all categorical
+    num_cols = [
+        "loan_amnt", "annual_inc", "dti", "emp_length", "revol_util", "fico",
+        "loan_to_income", "fico_dti_interaction", "revol_util_squared", "annual_inc_log"
+    ]
+    cat_cols = ["grade", "term", "purpose", "home_ownership", "state"]
+    expected_order = num_cols + cat_cols
+    
+    # Verify all required columns are present
+    missing = [c for c in expected_order if c not in df.columns]
+    if missing:
+        logger.error(f"Missing required features: {missing}")
+        raise HTTPException(
+            status_code=400, 
+            detail="Invalid request: missing required fields. Please check your input and try again."
+        )
+    
+    # Reorder to match ColumnTransformer expectation
+    df = df[expected_order]
     return df
 
 @app.get("/health")
