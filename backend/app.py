@@ -879,14 +879,8 @@ def delete_application(request: Request, application_id: str, authorization: str
         # Check if deletion was successful
         if result.data and len(result.data) > 0:
             logger.info(f"Application {application_id} deleted by user {user_id}")
-            # Update portfolio stats manually (until DELETE trigger is added to database)
-            # TODO: Once DELETE trigger is added, this manual update can be removed
-            try:
-                supabase.rpc("upsert_portfolio_stats", {"p_user_id": user_id}).execute()
-                logger.debug(f"Portfolio stats updated after deletion for user {user_id}")
-            except Exception as e:
-                logger.warning(f"Failed to update portfolio stats after deletion: {str(e)}")
-                # Non-critical - stats will be correct on next fetch since we compute fresh
+            # Portfolio stats are automatically updated via database trigger
+            # (trigger_update_portfolio_stats_on_delete) when application is deleted.
             return {"success": True, "message": "Application deleted successfully"}
         else:
             # No rows deleted - application doesn't exist or user doesn't have permission
