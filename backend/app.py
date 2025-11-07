@@ -225,8 +225,17 @@ def _load_artifacts():
     # Initialize SHAP explainer with background data
     # For XGBoost, we can use TreeExplainer which is fast
     try:
-        # Get the XGBoost model from the pipeline
-        xgb_model = model.named_steps['clf']
+        # If calibrated model exists, use its base estimator for SHAP
+        # This ensures SHAP explains the same model that makes predictions
+        if calibrated_model is not None:
+            # CalibratedClassifierCV wraps the base XGBoost model
+            xgb_model = calibrated_model.base_estimator
+            logger.info("Using base model from calibrated wrapper for SHAP")
+        else:
+            # Fall back to base model from pipeline
+            xgb_model = model.named_steps['clf']
+            logger.info("Using base model from pipeline for SHAP")
+        
         shap_explainer = shap.TreeExplainer(xgb_model)
         logger.info("SHAP explainer initialized successfully")
     except Exception as e:

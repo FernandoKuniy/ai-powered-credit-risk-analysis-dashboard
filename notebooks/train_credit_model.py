@@ -157,9 +157,11 @@ calibrated_model = CalibratedClassifierCV(
 )
 calibrated_model.fit(X_val_transformed, y_val)
 
-# Replace the base model in the pipeline with calibrated model
-# Note: We'll need to handle calibration separately in inference
-# For now, save both the pipeline and calibrated model separately
+# Save both models separately:
+# - Base pipeline (model.pkl): Used for SHAP explanations (TreeExplainer compatibility)
+# - Calibrated model (model_calibrated.pkl): Used for accurate probability predictions
+# In production, SHAP uses the base model from inside the calibrated wrapper
+# to ensure explanations align with the model making predictions
 
 # Comprehensive evaluation
 print("\n[6/7] Evaluating model performance...")
