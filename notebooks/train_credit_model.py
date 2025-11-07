@@ -41,17 +41,90 @@ df["emp_length"] = (
 
 # Feature engineering
 print("   Adding engineered features...")
+# Existing features
 df["loan_to_income"] = df["loan_amnt"] / (df["annual_inc"] + 1)  # Add 1 to avoid division by zero
 df["fico_dti_interaction"] = df["fico"] * (1 / (df["dti"] + 1))  # Higher FICO + lower DTI = better
 df["revol_util_squared"] = df["revol_util"] ** 2  # Non-linear relationship for high utilization
 df["annual_inc_log"] = np.log1p(df["annual_inc"])  # Log transform for income
 
+# Risk bucket features: Categorize continuous variables into risk buckets
+print("   Adding risk bucket features...")
+# DTI buckets: low (<15), medium (15-25), high (>25)
+df["dti_bucket"] = pd.cut(df["dti"], bins=[-np.inf, 15, 25, np.inf], labels=[0, 1, 2]).astype(float)
+
+# FICO buckets: excellent (>750), good (700-750), fair (650-700), poor (<650)
+df["fico_bucket"] = pd.cut(df["fico"], bins=[-np.inf, 650, 700, 750, np.inf], labels=[0, 1, 2, 3]).astype(float)
+
+# Loan-to-income buckets: low (<0.2), medium (0.2-0.4), high (>0.4)
+df["lti_bucket"] = pd.cut(df["loan_to_income"], bins=[-np.inf, 0.2, 0.4, np.inf], labels=[0, 1, 2]).astype(float)
+
+# Employment stability buckets: stable (>5yrs), moderate (2-5yrs), new (<2yrs)
+df["emp_stability"] = pd.cut(df["emp_length"], bins=[-np.inf, 2, 5, np.inf], labels=[0, 1, 2]).astype(float)
+
+# Interaction features: Capture relationships between multiple variables
+print("   Adding interaction features...")
+# FICO-Grade interaction (captures alignment between credit score and loan grade)
+# Map grade to numeric: A=1, B=2, C=3, D=4, E=5, F=6, G=7
+grade_map = {"A": 1, "B": 2, "C": 3, "D": 4, "E": 5, "F": 6, "G": 7}
+df["grade_numeric"] = df["grade"].map(grade_map).fillna(0)
+df["fico_grade_interaction"] = df["fico"] * df["grade_numeric"]
+
+# DTI-Revolving utilization interaction (debt burden)
+df["dti_revol_interaction"] = df["dti"] * (df["revol_util"] / 100)  # Normalize revol_util to 0-1
+
+# Income-Term interaction (payment capacity: higher income + shorter term = better)
+df["term_numeric"] = df["term"].str.extract(r"(\d+)").astype(float).fillna(36)
+df["income_term_interaction"] = df["annual_inc"] / (df["term_numeric"] + 1)
+
+# Loan-Purpose risk interaction (purpose-specific risk weights)
+# Higher risk purposes: small_business, other, debt_consolidation
+purpose_risk_weights = {
+    "small_business": 1.5, "other": 1.3, "debt_consolidation": 1.2,
+    "credit_card": 1.1, "home_improvement": 1.0, "major_purchase": 0.9,
+    "car": 0.8, "medical": 0.8, "house": 0.7, "vacation": 0.7, "wedding": 0.6,
+    "moving": 0.6, "educational": 0.5
+}
+df["purpose_risk_weight"] = df["purpose"].map(purpose_risk_weights).fillna(1.0)
+df["loan_purpose_risk"] = df["loan_amnt"] * df["purpose_risk_weight"]
+
+# Polynomial features: Capture non-linear relationships
+print("   Adding polynomial features...")
+df["fico_squared"] = df["fico"] ** 2  # Captures diminishing returns at high FICO
+df["dti_squared"] = df["dti"] ** 2  # Exponential risk at high DTI
+df["loan_amnt_squared"] = df["loan_amnt"] ** 2  # Non-linear loan size risk
+
+# Ratio and normalized features: Derived metrics for better interpretability
+print("   Adding ratio and normalized features...")
+# Income per year employed (income stability indicator)
+df["income_per_year_employed"] = df["annual_inc"] / (df["emp_length"] + 1)
+
+# Debt service ratio (monthly payment burden)
+monthly_payment = df["loan_amnt"] / df["term_numeric"]
+df["debt_service_ratio"] = monthly_payment / (df["annual_inc"] / 12 + 1)
+
+# Credit utilization ratio (normalized 0-1)
+df["credit_utilization_ratio"] = df["revol_util"] / 100
+
+# Drop intermediate helper columns (not used in model, only for feature engineering)
+intermediate_cols = ["grade_numeric", "term_numeric", "purpose_risk_weight"]
+df = df.drop(columns=[col for col in intermediate_cols if col in df.columns])
+
 y = df["default"].astype(int)
 X = df.drop(columns=["default"])
 
 num = [
+    # Original features
     "loan_amnt", "annual_inc", "dti", "emp_length", "revol_util", "fico",
-    "loan_to_income", "fico_dti_interaction", "revol_util_squared", "annual_inc_log"
+    # Existing engineered features
+    "loan_to_income", "fico_dti_interaction", "revol_util_squared", "annual_inc_log",
+    # Risk bucket features
+    "dti_bucket", "fico_bucket", "lti_bucket", "emp_stability",
+    # Interaction features
+    "fico_grade_interaction", "dti_revol_interaction", "income_term_interaction", "loan_purpose_risk",
+    # Polynomial features
+    "fico_squared", "dti_squared", "loan_amnt_squared",
+    # Ratio and normalized features
+    "income_per_year_employed", "debt_service_ratio", "credit_utilization_ratio"
 ]
 cat = ["grade", "term", "purpose", "home_ownership", "state"]
 

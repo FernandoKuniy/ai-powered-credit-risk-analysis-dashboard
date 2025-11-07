@@ -260,10 +260,48 @@ for i, test_case in enumerate(test_cases, 1):
     input_df = pd.DataFrame([test_case['input']])
     
     # Add engineered features (matching training script)
+    # Existing features
     input_df["loan_to_income"] = input_df["loan_amnt"] / (input_df["annual_inc"] + 1)
     input_df["fico_dti_interaction"] = input_df["fico"] * (1 / (input_df["dti"] + 1))
     input_df["revol_util_squared"] = input_df["revol_util"] ** 2
     input_df["annual_inc_log"] = np.log1p(input_df["annual_inc"])
+    
+    # Risk bucket features
+    input_df["dti_bucket"] = pd.cut(input_df["dti"], bins=[-np.inf, 15, 25, np.inf], labels=[0, 1, 2]).astype(float)
+    input_df["fico_bucket"] = pd.cut(input_df["fico"], bins=[-np.inf, 650, 700, 750, np.inf], labels=[0, 1, 2, 3]).astype(float)
+    input_df["lti_bucket"] = pd.cut(input_df["loan_to_income"], bins=[-np.inf, 0.2, 0.4, np.inf], labels=[0, 1, 2]).astype(float)
+    input_df["emp_stability"] = pd.cut(input_df["emp_length"], bins=[-np.inf, 2, 5, np.inf], labels=[0, 1, 2]).astype(float)
+    
+    # Interaction features
+    grade_map = {"A": 1, "B": 2, "C": 3, "D": 4, "E": 5, "F": 6, "G": 7}
+    input_df["grade_numeric"] = input_df["grade"].map(grade_map).fillna(0)
+    input_df["fico_grade_interaction"] = input_df["fico"] * input_df["grade_numeric"]
+    input_df["dti_revol_interaction"] = input_df["dti"] * (input_df["revol_util"] / 100)
+    input_df["term_numeric"] = input_df["term"].str.extract(r"(\d+)").astype(float).fillna(36)
+    input_df["income_term_interaction"] = input_df["annual_inc"] / (input_df["term_numeric"] + 1)
+    purpose_risk_weights = {
+        "small_business": 1.5, "other": 1.3, "debt_consolidation": 1.2,
+        "credit_card": 1.1, "home_improvement": 1.0, "major_purchase": 0.9,
+        "car": 0.8, "medical": 0.8, "house": 0.7, "vacation": 0.7, "wedding": 0.6,
+        "moving": 0.6, "educational": 0.5
+    }
+    input_df["purpose_risk_weight"] = input_df["purpose"].map(purpose_risk_weights).fillna(1.0)
+    input_df["loan_purpose_risk"] = input_df["loan_amnt"] * input_df["purpose_risk_weight"]
+    
+    # Polynomial features
+    input_df["fico_squared"] = input_df["fico"] ** 2
+    input_df["dti_squared"] = input_df["dti"] ** 2
+    input_df["loan_amnt_squared"] = input_df["loan_amnt"] ** 2
+    
+    # Ratio and normalized features
+    input_df["income_per_year_employed"] = input_df["annual_inc"] / (input_df["emp_length"] + 1)
+    monthly_payment = input_df["loan_amnt"] / input_df["term_numeric"]
+    input_df["debt_service_ratio"] = monthly_payment / (input_df["annual_inc"] / 12 + 1)
+    input_df["credit_utilization_ratio"] = input_df["revol_util"] / 100
+    
+    # Drop intermediate helper columns
+    intermediate_cols = ["grade_numeric", "term_numeric", "purpose_risk_weight"]
+    input_df = input_df.drop(columns=[col for col in intermediate_cols if col in input_df.columns])
     
     # Ensure correct column order
     input_df = input_df[feature_order]
