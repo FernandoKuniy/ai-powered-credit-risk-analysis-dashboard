@@ -229,8 +229,17 @@ def _load_artifacts():
         # This ensures SHAP explains the same model that makes predictions
         if calibrated_model is not None:
             # CalibratedClassifierCV wraps the base XGBoost model
-            xgb_model = calibrated_model.base_estimator
-            logger.info("Using base model from calibrated wrapper for SHAP")
+            # Try different attribute names (varies by sklearn version)
+            if hasattr(calibrated_model, 'base_estimator'):
+                xgb_model = calibrated_model.base_estimator
+            elif hasattr(calibrated_model, 'estimator'):
+                xgb_model = calibrated_model.estimator
+            elif hasattr(calibrated_model, 'base_estimator_'):
+                xgb_model = calibrated_model.base_estimator_
+            else:
+                logger.warning("Could not find base estimator in calibrated model, falling back to pipeline model")
+                xgb_model = model.named_steps['clf']
+            logger.info(f"Using base model from calibrated wrapper for SHAP (type: {type(xgb_model)})")
         else:
             # Fall back to base model from pipeline
             xgb_model = model.named_steps['clf']
@@ -239,7 +248,7 @@ def _load_artifacts():
         shap_explainer = shap.TreeExplainer(xgb_model)
         logger.info("SHAP explainer initialized successfully")
     except Exception as e:
-        logger.warning(f"Failed to initialize SHAP explainer: {str(e)}. Explanations will not be available.")
+        logger.warning(f"Failed to initialize SHAP explainer: {str(e)}. Explanations will not be available.", exc_info=True)
         shap_explainer = None
     
     return True
@@ -274,8 +283,18 @@ def _compute_shap_explanation(df: pd.DataFrame, pd_value: float) -> Dict[str, An
         # ColumnTransformer expects: all numerical features first, then all categorical
         preprocessor = model.named_steps['pre']
         num_cols = [
+            # Original features
             "loan_amnt", "annual_inc", "dti", "emp_length", "revol_util", "fico",
-            "loan_to_income", "fico_dti_interaction", "revol_util_squared", "annual_inc_log"
+            # Existing engineered features
+            "loan_to_income", "fico_dti_interaction", "revol_util_squared", "annual_inc_log",
+            # Risk bucket features
+            "dti_bucket", "fico_bucket", "lti_bucket", "emp_stability",
+            # Interaction features
+            "fico_grade_interaction", "dti_revol_interaction", "income_term_interaction", "loan_purpose_risk",
+            # Polynomial features
+            "fico_squared", "dti_squared", "loan_amnt_squared",
+            # Ratio and normalized features
+            "income_per_year_employed", "debt_service_ratio", "credit_utilization_ratio"
         ]
         cat_cols = ["grade", "term", "purpose", "home_ownership", "state"]
         expected_order = num_cols + cat_cols
@@ -729,9 +748,12 @@ def score(request: Request, req: ScoreRequest, authorization: str | None = Heade
             "fico": req.fico,
             "pd": float(pd_hat),
             "risk_grade": risk,
-            "decision": decision,
-            "explanation": explanation_data  # Store explanation as JSONB
+            "decision": decision
         }
+        
+        # Only include explanation if it exists (not None)
+        if explanation_data is not None:
+            application_data["explanation"] = explanation_data  # Store explanation as JSONB
         
         # Add user_id if JWT is available and valid
         if is_valid_token and user_id:
@@ -1091,6 +1113,10 @@ def save_application(request: Request, req: SaveApplicationRequest, authorizatio
         "risk_grade": req.risk_grade,
         "decision": req.decision
     }
+    
+    # Include explanation if provided
+    if req.explanation is not None:
+        application_data["explanation"] = req.explanation
     
     # Attempt to save with retry logic
     max_retries = 2

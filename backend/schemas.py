@@ -86,6 +86,7 @@ class SaveApplicationRequest(BaseModel):
     pd: confloat(ge=0.0, le=1.0)
     risk_grade: Literal["A", "B", "C", "D", "E", "F", "G"]
     decision: Literal["approve", "review"]
+    explanation: dict | None = None  # SHAP explanation data (JSONB)
     
     @field_validator("state")
     @classmethod

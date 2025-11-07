@@ -66,6 +66,15 @@ export default function ScorePage() {
           pd: r.pd,
           risk_grade: r.risk_grade,
           decision: r.decision,
+          explanation: r.explanation ? {
+            top_features: r.explanation.top_features.map((f: any) => ({
+              feature: f.feature,
+              shap_value: f.shap_value,
+              impact: f.impact,
+              contribution_pct: f.contribution_pct,
+            })),
+            summary: r.explanation.summary,
+          } : null,
           timestamp: new Date().toISOString(),
         };
         addUnsavedApplication(unsavedApp);

@@ -32,6 +32,15 @@ export type UnsavedApplication = ScorePayload & {
   pd: number;
   risk_grade: string;
   decision: string;
+  explanation: {
+    top_features: Array<{
+      feature: string;
+      shap_value: number;
+      impact: "positive" | "negative";
+      contribution_pct: number;
+    }>;
+    summary: string;
+  } | null;
   timestamp: string; // ISO string of when it was scored
 };
 
