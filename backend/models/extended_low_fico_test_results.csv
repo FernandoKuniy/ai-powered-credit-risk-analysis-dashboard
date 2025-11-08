@@ -1,0 +1,13 @@
+name,fico,grade,predicted_pd,expected_min,expected_max,in_range,risk_grade
+FICO 350 - Grade E - High DTI,350,E,0.269946813583374,0.4,0.6,False,D
+FICO 350 - Grade F - High DTI,350,F,0.6064516305923462,0.5,0.7,True,G
+FICO 350 - Grade G - High DTI,350,G,0.7045454382896423,0.6,0.8,True,G
+FICO 350 - Grade E - Low Income,350,E,0.2767857015132904,0.5,0.7,False,D
+FICO 350 - Grade E - Very Low Income,350,E,0.2832214832305908,0.55,0.75,False,D
+FICO 400 - Grade F - Moderate DTI,400,F,0.6948052048683167,0.45,0.65,False,G
+FICO 450 - Grade E - High DTI,450,E,0.5472636818885803,0.4,0.6,True,F
+FICO 500 - Grade D - Moderate DTI,500,D,0.4986737370491028,0.35,0.55,True,F
+FICO 550 - Grade E - Low DTI,550,E,0.4082396924495697,0.3,0.5,True,E
+FICO 600 - Grade D - Low DTI,600,D,0.2767857015132904,0.25,0.4,True,D
+FICO 300 - Grade G - Extreme Risk,300,G,0.6064516305923462,0.7,0.9,False,G
+FICO 380 - Grade F - Very High DTI,380,F,0.6948052048683167,0.65,0.85,True,G

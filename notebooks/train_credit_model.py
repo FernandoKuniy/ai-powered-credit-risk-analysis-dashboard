@@ -29,6 +29,21 @@ df = pd.read_csv("data/raw/lendingclub_sample_150k.csv")
 print(f"   Loaded {len(df)} rows")
 print(f"   Default rate: {df['default'].mean():.2%}")
 
+# Load synthetic data for low FICO scores (< 614)
+try:
+    synthetic_df = pd.read_csv("data/raw/lendingclub_synthetic_low_fico.csv")
+    print(f"   Loaded {len(synthetic_df)} synthetic samples (FICO < 614)")
+    print(f"   Synthetic default rate: {synthetic_df['default'].mean():.2%}")
+    print(f"   Synthetic FICO range: {synthetic_df['fico'].min():.0f} - {synthetic_df['fico'].max():.0f}")
+    
+    # Combine original and synthetic data
+    df = pd.concat([df, synthetic_df], ignore_index=True)
+    print(f"   Combined dataset: {len(df)} rows")
+    print(f"   Combined default rate: {df['default'].mean():.2%}")
+except FileNotFoundError:
+    print("   ⚠️  Synthetic data not found. Run generate_synthetic_data.py first.")
+    print("   Continuing with original dataset only.")
+
 # Convert emp_length to numeric (years)
 print("\n[2/7] Preprocessing and feature engineering...")
 df["emp_length"] = (
@@ -105,6 +120,12 @@ df["debt_service_ratio"] = monthly_payment / (df["annual_inc"] / 12 + 1)
 # Credit utilization ratio (normalized 0-1)
 df["credit_utilization_ratio"] = df["revol_util"] / 100
 
+# FICO risk penalty: Explicitly penalizes low FICO scores
+# Formula: max(0, (650 - fico) / 100)
+# This makes extreme low FICO values (300-400) stand out more prominently
+# FICO 350 → penalty = 3.0, FICO 300 → penalty = 3.5, FICO 650+ → penalty = 0.0
+df["fico_risk_penalty"] = np.maximum(0, (650 - df["fico"]) / 100)
+
 # Drop intermediate helper columns (not used in model, only for feature engineering)
 intermediate_cols = ["grade_numeric", "term_numeric", "purpose_risk_weight"]
 df = df.drop(columns=[col for col in intermediate_cols if col in df.columns])
@@ -124,7 +145,9 @@ num = [
     # Polynomial features
     "fico_squared", "dti_squared", "loan_amnt_squared",
     # Ratio and normalized features
-    "income_per_year_employed", "debt_service_ratio", "credit_utilization_ratio"
+    "income_per_year_employed", "debt_service_ratio", "credit_utilization_ratio",
+    # FICO risk penalty: Explicit penalty for low FICO scores
+    "fico_risk_penalty"
 ]
 cat = ["grade", "term", "purpose", "home_ownership", "state"]
 

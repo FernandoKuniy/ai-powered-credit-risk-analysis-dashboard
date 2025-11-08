@@ -1,0 +1,55 @@
+{
+  "fico_range": {
+    "min": 300.0192172739627,
+    "max": 613.9994900645183,
+    "mean": 474.0737867006197,
+    "valid": true
+  },
+  "default_rate": {
+    "synthetic": 0.5384666666666666,
+    "original": 0.17826,
+    "valid": true
+  },
+  "grade_dist": {
+    "G": 0.4643333333333333,
+    "F": 0.28473333333333334,
+    "E": 0.20193333333333333,
+    "D": 0.049
+  },
+  "fico_default_relationship": [
+    {
+      "fico_range": "300-400",
+      "default_rate": 0.7273936170212766,
+      "count": 3760
+    },
+    {
+      "fico_range": "400-500",
+      "default_rate": 0.6064855390008764,
+      "count": 4564
+    },
+    {
+      "fico_range": "500-600",
+      "default_rate": 0.4128210079165862,
+      "count": 5179
+    },
+    {
+      "fico_range": "600-614",
+      "default_rate": 0.29124916499666,
+      "count": 1497
+    }
+  ],
+  "feature_ranges": {
+    "loan_amnt": {
+      "min": 1000.0,
+      "max": 35000.0
+    },
+    "annual_inc": {
+      "min": 20000.0,
+      "max": 4995463.043847567
+    },
+    "dti": {
+      "min": 0.0,
+      "max": 50.0
+    }
+  }
+}

@@ -367,7 +367,9 @@ def _compute_shap_explanation(df: pd.DataFrame, pd_value: float) -> Dict[str, An
             # Polynomial features
             "fico_squared", "dti_squared", "loan_amnt_squared",
             # Ratio and normalized features
-            "income_per_year_employed", "debt_service_ratio", "credit_utilization_ratio"
+            "income_per_year_employed", "debt_service_ratio", "credit_utilization_ratio",
+            # FICO risk penalty: Explicit penalty for low FICO scores
+            "fico_risk_penalty"
         ]
         cat_cols = ["grade", "term", "purpose", "home_ownership", "state"]
         expected_order = num_cols + cat_cols
@@ -719,6 +721,11 @@ def _to_dataframe(req: ScoreRequest) -> pd.DataFrame:
     monthly_payment = df["loan_amnt"] / df["term_numeric"]
     df["debt_service_ratio"] = monthly_payment / (df["annual_inc"] / 12 + 1)
     df["credit_utilization_ratio"] = df["revol_util"] / 100
+    
+    # FICO risk penalty: Explicitly penalizes low FICO scores
+    # Formula: max(0, (650 - fico) / 100)
+    # This makes extreme low FICO values (300-400) stand out more prominently
+    df["fico_risk_penalty"] = np.maximum(0, (650 - df["fico"]) / 100)
     
     # Drop intermediate helper columns
     intermediate_cols = ["grade_numeric", "term_numeric", "purpose_risk_weight"]

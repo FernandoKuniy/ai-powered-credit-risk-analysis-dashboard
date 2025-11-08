@@ -299,6 +299,9 @@ for i, test_case in enumerate(test_cases, 1):
     input_df["debt_service_ratio"] = monthly_payment / (input_df["annual_inc"] / 12 + 1)
     input_df["credit_utilization_ratio"] = input_df["revol_util"] / 100
     
+    # FICO risk penalty: Explicitly penalizes low FICO scores
+    input_df["fico_risk_penalty"] = np.maximum(0, (650 - input_df["fico"]) / 100)
+    
     # Drop intermediate helper columns
     intermediate_cols = ["grade_numeric", "term_numeric", "purpose_risk_weight"]
     input_df = input_df.drop(columns=[col for col in intermediate_cols if col in input_df.columns])
