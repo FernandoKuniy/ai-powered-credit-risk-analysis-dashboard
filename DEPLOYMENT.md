@@ -10,6 +10,7 @@ Set these environment variables in your Render service dashboard:
 # Supabase Configuration
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=your-anon-key
+SUPABASE_JWT_SECRET=your-jwt-secret
 
 # CORS Configuration  
 ALLOWED_ORIGINS=https://your-frontend.vercel.app,http://localhost:3000
@@ -49,6 +50,10 @@ API_KEY=your-secret-api-key
 3. **Get Credentials**
    - Project URL: Found in Settings > API
    - Anon Key: Found in Settings > API (public anon key)
+   - **JWT Secret**: Found in Settings > API > JWT Secret section
+     - This is required for the backend to verify user authentication tokens
+     - Without it, JWT verification will be disabled (not recommended for production)
+     - Copy the entire JWT secret value (it's a long string starting with `eyJ...`)
 
 ## Deployment Steps
 
@@ -96,6 +101,10 @@ After both deployments are complete:
 2. **Database Connection**: Verify Supabase URL and key are correct
 3. **API Key Mismatch**: Ensure same `API_KEY` on both services
 4. **Model Not Loading**: Check that `model.pkl` exists in backend
+5. **JWT Verification Warnings**: If you see warnings about `SUPABASE_JWT_SECRET` not configured:
+   - Ensure you've added the JWT secret to your backend environment variables
+   - Verify the secret is copied correctly (it's a long string)
+   - The application will still work but authentication verification will be disabled
 
 ### Health Check Endpoints
 
@@ -104,6 +113,7 @@ After both deployments are complete:
 
 ## Production Considerations
 
+- **Required**: Set `SUPABASE_JWT_SECRET` in backend environment variables for proper authentication
 - Set up proper API key rotation
 - Enable Supabase Row Level Security for production
 - Add rate limiting to prevent abuse
