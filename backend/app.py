@@ -791,7 +791,9 @@ def score(request: Request, req: ScoreRequest, authorization: str | None = Heade
                 # Polynomial features
                 "fico_squared", "dti_squared", "loan_amnt_squared",
                 # Ratio and normalized features
-                "income_per_year_employed", "debt_service_ratio", "credit_utilization_ratio"
+                "income_per_year_employed", "debt_service_ratio", "credit_utilization_ratio",
+                # FICO risk penalty: Explicit penalty for low FICO scores
+                "fico_risk_penalty"
             ]
             cat_cols = ["grade", "term", "purpose", "home_ownership", "state"]
             expected_order = num_cols + cat_cols
