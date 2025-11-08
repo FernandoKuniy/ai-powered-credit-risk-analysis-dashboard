@@ -85,6 +85,11 @@ select.input {
   animation: fadeIn 0.2s ease-in-out;
 }
 
+/* Portal tooltips should not have transform animations */
+.info-tooltip[style*="position: fixed"] {
+  animation: fadeInOpacity 0.2s ease-in-out;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -93,5 +98,14 @@ select.input {
   to {
     opacity: 1;
     transform: translate(-50%, 0);
+  }
+}
+
+@keyframes fadeInOpacity {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }

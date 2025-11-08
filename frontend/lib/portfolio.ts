@@ -21,6 +21,8 @@ export type ApplicationDetail = {
       shap_value: number;
       impact: "positive" | "negative";
       contribution_pct: number;
+      feature_key?: string | null;
+      original_value?: string | null;
     }>;
     summary: string;
   } | null;

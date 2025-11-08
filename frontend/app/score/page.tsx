@@ -72,6 +72,8 @@ export default function ScorePage() {
               shap_value: f.shap_value,
               impact: f.impact,
               contribution_pct: f.contribution_pct,
+              feature_key: f.feature_key,
+              original_value: f.original_value,
             })),
             summary: r.explanation.summary,
           } : null,

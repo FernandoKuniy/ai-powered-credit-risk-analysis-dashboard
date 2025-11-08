@@ -42,9 +42,6 @@ export default function Navigation() {
           <div className="flex items-center gap-4">
             <div className="text-sm">
               <div className="text-white/70">{user.profile.full_name || user.email}</div>
-              <div className="text-xs text-white/50 capitalize">
-                {user.profile.role.replace('_', ' ')}
-              </div>
             </div>
             <button
               onClick={handleSignOut}

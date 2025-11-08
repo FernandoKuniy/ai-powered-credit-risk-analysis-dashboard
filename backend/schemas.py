@@ -43,6 +43,8 @@ class FeatureContribution(BaseModel):
     shap_value: float
     impact: Literal["positive", "negative"]  # positive = increases PD, negative = decreases
     contribution_pct: float
+    feature_key: str | None = None  # Original feature key for reference
+    original_value: str | None = None  # Formatted original value (e.g., "$15,000", "720", "18.5%")
 
 class Explanation(BaseModel):
     top_features: list[FeatureContribution]

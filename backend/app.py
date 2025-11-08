@@ -264,6 +264,68 @@ def _risk_grade(pd_val: float) -> str:
     if pd_val < 0.60:  return "F"
     return "G"
 
+def _format_feature_name(feat_name: str) -> str:
+    """Format feature names for display with proper acronyms and capitalization."""
+    # Mapping for proper feature name formatting
+    feature_name_map = {
+        'dti': 'DTI',
+        'fico': 'FICO',
+        'loan_amnt': 'Loan Amount',
+        'annual_inc': 'Annual Income',
+        'emp_length': 'Employment Length',
+        'revol_util': 'Revolving Utilization',
+        'loan_to_income': 'Loan-to-Income Ratio',
+        'fico_dti_interaction': 'FICO-DTI Interaction',
+        'revol_util_squared': 'Revolving Utilization²',
+        'annual_inc_log': 'Log Annual Income',
+        'dti_bucket': 'DTI Bucket',
+        'fico_bucket': 'FICO Bucket',
+        'lti_bucket': 'Loan-to-Income Bucket',
+        'emp_stability': 'Employment Stability',
+        'fico_grade_interaction': 'FICO-Grade Interaction',
+        'dti_revol_interaction': 'DTI-Revolving Interaction',
+        'income_term_interaction': 'Income-Term Interaction',
+        'loan_purpose_risk': 'Loan Purpose Risk',
+        'fico_squared': 'FICO²',
+        'dti_squared': 'DTI²',
+        'loan_amnt_squared': 'Loan Amount²',
+        'income_per_year_employed': 'Income per Year Employed',
+        'debt_service_ratio': 'Debt Service Ratio',
+        'credit_utilization_ratio': 'Credit Utilization Ratio',
+        'grade': 'Grade',
+        'term': 'Term',
+        'purpose': 'Purpose',
+        'home_ownership': 'Home Ownership',
+        'state': 'State'
+    }
+    return feature_name_map.get(feat_name, feat_name.replace('_', ' ').title())
+
+
+def _format_feature_value(feat_name: str, value: any) -> str:
+    """Format feature values with appropriate units and formatting."""
+    if pd.isna(value):
+        return "N/A"
+    
+    # Format based on feature type
+    if feat_name == 'loan_amnt':
+        return f"${value:,.0f}"
+    elif feat_name == 'annual_inc':
+        return f"${value:,.0f}"
+    elif feat_name in ['dti', 'revol_util']:
+        return f"{value:.1f}%"
+    elif feat_name == 'fico':
+        return f"{int(value)}"
+    elif feat_name == 'emp_length':
+        return f"{int(value)} years"
+    elif feat_name in ['grade', 'term', 'purpose', 'home_ownership', 'state']:
+        return str(value)
+    else:
+        # For engineered features, return formatted number
+        if isinstance(value, (int, float)):
+            return f"{value:.2f}"
+        return str(value)
+
+
 def _compute_shap_explanation(df: pd.DataFrame, pd_value: float) -> Dict[str, Any] | None:
     """
     Compute SHAP values for a given prediction and return top contributing features.
@@ -279,6 +341,17 @@ def _compute_shap_explanation(df: pd.DataFrame, pd_value: float) -> Dict[str, An
         return None
     
     try:
+        # Get original feature values from the input DataFrame
+        # Store original values before any transformations
+        original_values = {}
+        if len(df) > 0:
+            for col in df.columns:
+                try:
+                    val = df[col].iloc[0]
+                    original_values[col] = val if not pd.isna(val) else None
+                except (KeyError, IndexError):
+                    original_values[col] = None
+        
         # Transform input through preprocessing pipeline
         # ColumnTransformer expects: all numerical features first, then all categorical
         preprocessor = model.named_steps['pre']
@@ -384,16 +457,21 @@ def _compute_shap_explanation(df: pd.DataFrame, pd_value: float) -> Dict[str, An
             else:
                 shap_aggregated[cat_feat] = 0.0
         
-        # Create feature contributions list
-        feature_contributions = [
-            {
-                "feature": feat.replace('_', ' ').title(),  # Format feature name
+        # Create feature contributions list with proper formatting and original values
+        feature_contributions = []
+        for feat, shap_val in shap_aggregated.items():
+            # Get original value if available
+            original_value = original_values.get(feat, None)
+            formatted_value = _format_feature_value(feat, original_value) if original_value is not None else None
+            
+            feature_contributions.append({
+                "feature": _format_feature_name(feat),
+                "feature_key": feat,  # Keep original key for reference
                 "shap_value": float(shap_val),
                 "impact": "positive" if shap_val > 0 else "negative",
-                "contribution_pct": abs(shap_val) / (abs(pd_value) + 1e-10) * 100 if pd_value > 0 else 0.0
-            }
-            for feat, shap_val in shap_aggregated.items()
-        ]
+                "contribution_pct": abs(shap_val) / (abs(pd_value) + 1e-10) * 100 if pd_value > 0 else 0.0,
+                "original_value": formatted_value  # Add formatted original value
+            })
         
         # Sort by absolute SHAP value, descending
         feature_contributions.sort(key=lambda x: abs(x["shap_value"]), reverse=True)
@@ -407,16 +485,29 @@ def _compute_shap_explanation(df: pd.DataFrame, pd_value: float) -> Dict[str, An
             for feat in top_features:
                 feat["contribution_pct"] = (abs(feat["shap_value"]) / total_abs_contribution) * 100
         
-        # Create human-readable summary (use top 3 for summary)
+        # Create human-readable summary with actual values (use top 3 for summary)
         top_3 = top_features[:3]
-        increasing_factors = [f["feature"] for f in top_3 if f["impact"] == "positive"][:2]
-        decreasing_factors = [f["feature"] for f in top_3 if f["impact"] == "negative"][:2]
+        increasing_factors = [f for f in top_3 if f["impact"] == "positive"][:2]
+        decreasing_factors = [f for f in top_3 if f["impact"] == "negative"][:2]
         
         summary_parts = []
         if increasing_factors:
-            summary_parts.append(f"High {' and '.join(increasing_factors)} increase risk")
+            factor_descriptions = []
+            for factor in increasing_factors:
+                if factor["original_value"]:
+                    factor_descriptions.append(f"{factor['feature']} ({factor['original_value']})")
+                else:
+                    factor_descriptions.append(factor['feature'])
+            summary_parts.append(f"{' and '.join(factor_descriptions)} increase risk")
+        
         if decreasing_factors:
-            summary_parts.append(f"Low {' and '.join(decreasing_factors)} decrease risk")
+            factor_descriptions = []
+            for factor in decreasing_factors:
+                if factor["original_value"]:
+                    factor_descriptions.append(f"{factor['feature']} ({factor['original_value']})")
+                else:
+                    factor_descriptions.append(factor['feature'])
+            summary_parts.append(f"{' and '.join(factor_descriptions)} decrease risk")
         
         summary = ". ".join(summary_parts) if summary_parts else "Risk factors analyzed"
         

@@ -13,87 +13,81 @@ export default function InfoIcon({ explanation, className = "", position = "abov
   const [isVisible, setIsVisible] = useState(false);
   const iconRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({
-    position: "fixed",
-    zIndex: 9999,
-    visibility: "hidden",
-  });
+  const positionLockedRef = useRef(false);
+  const lockedPositionRef = useRef<{ top: string; left: string } | null>(null);
 
-  // Calculate tooltip position for portal mode
-  const calculateTooltipPosition = () => {
-    if (!iconRef.current) return;
-
-    const rect = iconRef.current.getBoundingClientRect();
-    const tooltipWidth = 320; // w-80 = 20rem = 320px
-    const spacing = 8; // mb-2 = 0.5rem = 8px
-
-    let top: number;
-    const left = rect.left + rect.width / 2 - tooltipWidth / 2;
-
-    if (position === "below") {
-      top = rect.bottom + spacing;
-    } else {
-      // Position above - estimate tooltip height as ~100px
-      top = rect.top - 100 - spacing;
+  // Reset position lock when tooltip is hidden
+  useEffect(() => {
+    if (!isVisible) {
+      positionLockedRef.current = false;
+      lockedPositionRef.current = null;
     }
+  }, [isVisible]);
 
-    // Keep tooltip within viewport horizontally
-    const clampedLeft = Math.max(10, Math.min(left, window.innerWidth - tooltipWidth - 10));
-
-    // If positioning above would go off-screen, position below instead
-    if (position === "above" && top < 10) {
-      top = rect.bottom + spacing;
-    }
-
-    return {
-      position: "fixed" as const,
-      top: `${top}px`,
-      left: `${clampedLeft}px`,
-      zIndex: 9999,
-      visibility: "visible" as const,
-    };
-  };
-
-  // Update tooltip position when visible (portal mode only)
+  // Set position directly on DOM element - use refs to avoid closure issues
   useLayoutEffect(() => {
-    if (!usePortal || !isVisible || !iconRef.current) {
-      if (!isVisible) {
-        setTooltipStyle({
-          position: "fixed",
-          zIndex: 9999,
-          visibility: "hidden",
-        });
-      }
-      return;
-    }
+    if (!usePortal || !tooltipRef.current) return;
 
-    const style = calculateTooltipPosition();
-    if (style) {
-      setTooltipStyle(style);
+    const element = tooltipRef.current;
+    
+    if (isVisible && iconRef.current && !positionLockedRef.current) {
+      const rect = iconRef.current.getBoundingClientRect();
+      const tooltipWidth = 320;
+      const spacing = 8;
+      const viewportPadding = 10;
+
+      let top: number;
+      let left = rect.left + rect.width / 2 - tooltipWidth / 2;
+
+      if (position === "below") {
+        top = rect.bottom + spacing;
+      } else {
+        top = rect.top - 100 - spacing;
+      }
+
+      if (left + tooltipWidth > window.innerWidth - viewportPadding) {
+        left = window.innerWidth - tooltipWidth - viewportPadding;
+      }
+      if (left < viewportPadding) {
+        left = viewportPadding;
+      }
+
+      if (position === "above" && top < viewportPadding) {
+        top = rect.bottom + spacing;
+      }
+
+      // Directly set style on DOM element - no React state, no re-renders
+      element.style.cssText = `
+        position: fixed !important;
+        top: ${top}px !important;
+        left: ${left}px !important;
+        z-index: 9999 !important;
+        visibility: visible !important;
+        transform: none !important;
+        transition: opacity 0.2s ease-in-out !important;
+      `;
+      
+      lockedPositionRef.current = { top: `${top}px`, left: `${left}px` };
+      positionLockedRef.current = true;
+    } else if (!isVisible && element) {
+      element.style.visibility = "hidden";
     }
   }, [isVisible, usePortal, position]);
 
-  // Update position on scroll and resize (portal mode only)
+  // Close tooltip on scroll
   useEffect(() => {
     if (!usePortal || !isVisible) return;
 
-    const updatePosition = () => {
-      if (iconRef.current) {
-        const style = calculateTooltipPosition();
-        if (style) {
-          setTooltipStyle(style);
-        }
-      }
+    const handleScroll = () => {
+      setIsVisible(false);
     };
 
-    window.addEventListener("scroll", updatePosition, true);
-    window.addEventListener("resize", updatePosition);
-
+    window.addEventListener("scroll", handleScroll, true);
+    
     return () => {
-      window.removeEventListener("scroll", updatePosition, true);
-      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", handleScroll, true);
     };
-  }, [usePortal, isVisible, position]);
+  }, [usePortal, isVisible]);
 
   // Close tooltip when clicking outside
   useEffect(() => {
@@ -117,10 +111,11 @@ export default function InfoIcon({ explanation, className = "", position = "abov
   const tooltipContent = isVisible ? (
     <div
       ref={tooltipRef}
-      className={`px-4 py-3 bg-gray-900 text-white text-sm rounded-lg shadow-lg border border-white/10 w-80 info-tooltip ${
-        !usePortal && (position === "below" ? "top-full mt-2 absolute left-1/2 transform -translate-x-1/2" : "bottom-full mb-2 absolute left-1/2 transform -translate-x-1/2")
+      className={`px-4 py-3 bg-gray-900 text-white text-sm rounded-lg shadow-lg border border-white/10 w-80 ${
+        !usePortal 
+          ? `info-tooltip ${position === "below" ? "top-full mt-2 absolute left-1/2 transform -translate-x-1/2" : "bottom-full mb-2 absolute left-1/2 transform -translate-x-1/2"}`
+          : "" // No animation class for portal tooltips - position set directly via DOM
       }`}
-      style={usePortal ? tooltipStyle : undefined}
       onMouseEnter={() => setIsVisible(true)}
       onMouseLeave={() => setIsVisible(false)}
     >
