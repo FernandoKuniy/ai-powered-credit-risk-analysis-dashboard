@@ -102,6 +102,7 @@ This will:
 
 ## 🧩 Features
 - **Real-time Scoring** → Submit loan applications and get instant PD, risk grade, and decision
+- **SHAP Explanations** → Feature importance and contribution analysis for each prediction
 - **Portfolio Dashboard** → Interactive charts showing risk distribution, approval rates, and trends
 - **Policy Simulator** → Adjust approval thresholds and see impact on approval/default rates
 - **Data Persistence** → All scoring results saved to Supabase for analytics
@@ -110,9 +111,10 @@ This will:
 ## 📊 Example Workflow
 1. **Submit Application** → Enter loan details in the scoring form
 2. **Get Instant Results** → Receive PD, risk grade (A-G), and approve/review decision
-3. **View Portfolio Analytics** → Dashboard shows total applications, approval rates, risk distribution
-4. **Simulate Policies** → Adjust approval threshold slider to see impact on approval and default rates
-5. **Track Trends** → View recent applications and monitor portfolio performance
+3. **View Explanations** → See SHAP-based feature contributions explaining why the model made its prediction
+4. **View Portfolio Analytics** → Dashboard shows total applications, approval rates, risk distribution
+5. **Simulate Policies** → Adjust approval threshold slider to see impact on approval and default rates
+6. **Track Trends** → View recent applications and monitor portfolio performance
 
 ## 🧮 Data Source
 LendingClub Loan Dataset: https://www.kaggle.com/datasets/wordsforthewise/lending-club
@@ -133,7 +135,6 @@ Subset of 50k–200k records used for demo purposes.
 See `DEPLOYMENT.md` for detailed setup instructions.
 
 ## 🧰 Future Enhancements
-- **SHAP Explanations** → Feature importance for each prediction
 - **Macro Data Integration** → FRED economic indicators (unemployment, rates)
 - **Automated ETL** → Scheduled portfolio updates and caching
 - **Authentication** → Role-based access (Loan Officer / Risk Manager)
