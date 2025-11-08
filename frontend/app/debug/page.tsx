@@ -2,6 +2,18 @@
 import { useAuth } from "../../lib/auth";
 
 export default function AuthDebug() {
+  // Only allow debug page in development mode
+  const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true' || process.env.NODE_ENV === 'development';
+  
+  if (!isDevMode) {
+    return (
+      <div className="card">
+        <h3 className="text-lg font-semibold mb-4">Debug Page</h3>
+        <p className="text-white/60">This page is only available in development mode.</p>
+      </div>
+    );
+  }
+
   const { user, session, loading } = useAuth();
 
   return (
