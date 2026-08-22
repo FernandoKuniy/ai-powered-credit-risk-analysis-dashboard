@@ -43,9 +43,19 @@ export function formatDateTime(iso: string): string {
   });
 }
 
-/** Backend enum values like `debt_consolidation` reach the UI raw. */
+/**
+ * Backend enum values like `debt_consolidation` and `MORTGAGE` reach the UI raw.
+ *
+ * Lower-cased before title-casing, because the housing values arrive already upper-case and
+ * title-casing them on their own leaves "MORTGAGE" shouting in the middle of a detail panel.
+ * State codes and grade letters are rendered directly rather than through here, so nothing
+ * that should stay upper-case passes through this.
+ */
 export function formatEnumLabel(value: string): string {
-  return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return value
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /**

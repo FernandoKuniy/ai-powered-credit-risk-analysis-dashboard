@@ -17,6 +17,16 @@
   /* The select chevron is a background-image, so it cannot take a utility class. zinc-400 is
      the one value legible against both the white and the near-black page. */
   --chevron: #a1a1aa;
+
+  /* Recharts renders to SVG attributes and takes colours as values, not classes, so the
+     charts read these instead of Tailwind utilities. Custom properties resolve inside SVG
+     presentation attributes, which keeps the two themes in this one block rather than in a
+     JavaScript media-query hook that would have to be kept in sync with the CSS. */
+  --chart-ink: #6366f1; /* indigo-500: the accent, used only for the model's own numbers */
+  --chart-grid: #f4f4f5; /* zinc-100 */
+  --chart-axis: #a1a1aa; /* zinc-400 */
+  --chart-surface: #ffffff;
+  --chart-border: #e4e4e7; /* zinc-200 */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -25,6 +35,12 @@
     --foreground: #ededed;
     --track: #27272a; /* zinc-800 */
     --thumb: #fafafa; /* zinc-50 */
+
+    --chart-ink: #818cf8; /* indigo-400: lifted, because indigo-500 muddies on near-black */
+    --chart-grid: #27272a; /* zinc-800 */
+    --chart-axis: #71717a; /* zinc-500 */
+    --chart-surface: #18181b; /* zinc-900 */
+    --chart-border: #27272a; /* zinc-800 */
   }
 }
 
