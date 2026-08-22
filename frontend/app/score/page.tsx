@@ -1,353 +1,124 @@
 "use client";
-import { useState } from "react";
 import Link from "next/link";
-import { scoreApplication, addUnsavedApplication, type UnsavedApplication } from "../../lib/api";
-import Navigation from "../components/Navigation";
+import { useState } from "react";
+import {
+  addUnsavedApplication,
+  scoreApplication,
+  type ScorePayload,
+  type ScoreResponse,
+  type UnsavedApplication,
+} from "../../lib/api";
 import { useAuth } from "../../lib/auth";
-import InfoIcon from "../components/InfoIcon";
+import { NARROW } from "../../lib/layout";
 import ExplanationDisplay from "../components/ExplanationDisplay";
+import ScoreForm from "../components/ScoreForm";
+import ScoreResult from "../components/ScoreResult";
+import ThresholdSimulator from "../components/ThresholdSimulator";
 
 export default function ScorePage() {
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<ScoreResponse | null>(null);
+  // The grade that was typed in, kept so the result can point out where the model disagreed.
+  // It is deliberately captured at submit time rather than read back off the form, which the
+  // person may have edited since.
+  const [submittedGrade, setSubmittedGrade] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [simulatedThreshold, setSimulatedThreshold] = useState(0.15); // Default threshold matching backend
-  const [submittedGrade, setSubmittedGrade] = useState<string | null>(null); // Store the input grade for display
   const { session, user } = useAuth();
 
-  const purposeOptions = [
-    "car",
-    "credit_card",
-    "debt_consolidation",
-    "home_improvement",
-    "house",
-    "major_purchase",
-    "medical",
-    "moving",
-    "other",
-    "renewable_energy",
-    "small_business",
-    "vacation",
-  ];
-
-  const formatPurposeLabel = (value: string) => {
-    return value.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
-  };
-
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    const inputGrade = String(form.get("grade"));
-    const payload = {
-      loan_amnt: Number(form.get("loan_amnt")),
-      annual_inc: Number(form.get("annual_inc")),
-      dti: Number(form.get("dti")),
-      emp_length: Number(form.get("emp_length")),
-      grade: inputGrade,
-      term: String(form.get("term")),
-      purpose: String(form.get("purpose")),
-      home_ownership: String(form.get("home_ownership")),
-      state: String(form.get("state")),
-      revol_util: Number(form.get("revol_util")),
-      fico: Number(form.get("fico")),
-    };
-    setLoading(true); setError(null);
-    setSubmittedGrade(inputGrade); // Store the input grade for display
+  async function handleSubmit(payload: ScorePayload) {
+    setSubmitting(true);
+    setError(null);
+    setSubmittedGrade(payload.grade);
     try {
-      const r = await scoreApplication(payload, session?.access_token);
-      setResult(r);
-      // Reset simulation threshold to default when new result is received
-      setSimulatedThreshold(0.15);
-      
-      // If user is unauthenticated, save to localStorage for later persistence
-      if (!user && r) {
-        const unsavedApp: UnsavedApplication = {
+      const scored = await scoreApplication(payload, session?.access_token);
+      setResult(scored);
+
+      // Signed out, nothing is persisted server-side, so the result is parked in
+      // localStorage and picked up if the person creates an account afterwards.
+      if (!user) {
+        const unsaved: UnsavedApplication = {
           ...payload,
-          pd: r.pd,
-          risk_grade: r.risk_grade,
-          decision: r.decision,
-          explanation: r.explanation ? {
-            top_features: r.explanation.top_features.map((f: any) => ({
-              feature: f.feature,
-              shap_value: f.shap_value,
-              impact: f.impact,
-              contribution_pct: f.contribution_pct,
-              feature_key: f.feature_key,
-              original_value: f.original_value,
-            })),
-            summary: r.explanation.summary,
-          } : null,
+          pd: scored.pd,
+          risk_grade: scored.risk_grade,
+          decision: scored.decision,
+          explanation: scored.explanation,
           timestamp: new Date().toISOString(),
         };
-        addUnsavedApplication(unsavedApp);
+        addUnsavedApplication(unsaved);
       }
-    } catch (err: any) {
-      setError(err?.message || "Request failed");
-      console.error(err);
+    } catch (err) {
+      setResult(null);
+      // Guard the empty case explicitly: an Error with a blank message is falsy once it
+      // reaches the JSX below, which silently swallowed the whole failure.
+      const message = err instanceof Error ? err.message.trim() : "";
+      setError(message || "The scoring service didn't respond.");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   }
 
-  const isAuthenticated = !!user;
-
   return (
-      <main>
-        <Navigation />
-        <div className="card">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">Scoring Form</h2>
-          {!isAuthenticated && (
-            <span className="text-xs text-white/50 bg-white/10 px-2 py-1 rounded">
-              Try it free • No sign-up required
-            </span>
-          )}
-        </div>
-        <form className="grid gap-6 md:grid-cols-2" onSubmit={onSubmit}>
-          {/* numeric fields */}
-          <label className="block space-y-2">
-            <span className="label flex items-center gap-3">
-              Loan Amount 
-              <InfoIcon explanation="The total amount of money the borrower is requesting for the loan." />
-            </span>
-            <input name="loan_amnt" type="number" className="input" defaultValue={10000} required />
-          </label>
-          <label className="block space-y-2">
-            <span className="label flex items-center gap-3">
-              Annual Income 
-              <InfoIcon explanation="The borrower's total annual income from all sources before taxes." />
-            </span>
-            <input name="annual_inc" type="number" className="input" defaultValue={80000} required />
-          </label>
-          <label className="block space-y-2">
-            <span className="label flex items-center gap-3">
-              DTI 
-              <InfoIcon explanation="Debt-to-Income ratio: Monthly debt payments divided by monthly income, expressed as a percentage." />
-            </span>
-            <input name="dti" type="number" step="0.01" className="input" defaultValue={12.5} required />
-          </label>
-          <label className="block space-y-2">
-            <span className="label flex items-center gap-3">
-              Employment Length (years) 
-              <InfoIcon explanation="Number of years the borrower has been employed at their current job." />
-            </span>
-            <input name="emp_length" type="number" className="input" defaultValue={4} required />
-          </label>
-          <label className="block space-y-2">
-            <span className="label flex items-center gap-3">
-              Revolving Utilization 
-              <InfoIcon explanation="Percentage of available revolving credit that is currently being used (credit card balances vs limits)." />
-            </span>
-            <input name="revol_util" type="number" step="0.1" className="input" defaultValue={35} required />
-          </label>
-          <label className="block space-y-2">
-            <span className="label flex items-center gap-3">
-              FICO 
-              <InfoIcon explanation="FICO credit score ranging from 300-850, indicating creditworthiness based on credit history." />
-            </span>
-            <input name="fico" type="number" className="input" defaultValue={720} required />
-          </label>
+    <main className={`${NARROW} flex-1 py-10`}>
+      <h1 className="text-2xl font-semibold tracking-tight">Score an application</h1>
+      <p className="mt-2 max-w-prose text-sm text-zinc-600 dark:text-zinc-400">
+        Eleven facts about a borrower go in. What comes back is the probability they default, the
+        grade that probability maps to, and which of those eleven pushed the number hardest.
+      </p>
 
-          {/* categorical fields */}
-          <label className="block space-y-2">
-            <span className="label flex items-center gap-3">
-              Lender-Assigned Grade 
-              <InfoIcon explanation="The initial loan grade assigned by the lender (A=best, G=worst). This is used as an input feature for the ML model to predict PD. The model will calculate its own risk grade from the predicted PD, which may differ." />
-            </span>
-            <select name="grade" className="input" defaultValue="B">
-              {"ABCDEFG".split("").map((g) => <option key={g}>{g}</option>)}
-            </select>
-          </label>
-          <label className="block space-y-2">
-            <span className="label flex items-center gap-3">
-              Term 
-              <InfoIcon explanation="The length of time over which the loan will be repaid (36 or 60 months)." />
-            </span>
-            <select name="term" className="input" defaultValue="36 months">
-              <option>36 months</option><option>60 months</option>
-            </select>
-          </label>
-          <label className="block md:col-span-2 space-y-2">
-            <span className="label flex items-center gap-3">
-              Purpose 
-              <InfoIcon explanation="The intended use of the loan funds (e.g., debt consolidation, credit card, home improvement, etc.)." />
-            </span>
-            <select name="purpose" className="input" defaultValue="debt_consolidation">
-              {purposeOptions.map((purpose) => (
-                <option key={purpose} value={purpose}>
-                  {formatPurposeLabel(purpose)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block space-y-2">
-            <span className="label flex items-center gap-3">
-              Home Ownership 
-              <InfoIcon explanation="The borrower's housing status: RENT, MORTGAGE, OWN (no mortgage), or OTHER." />
-            </span>
-            <select name="home_ownership" className="input" defaultValue="RENT">
-              <option>RENT</option><option>MORTGAGE</option><option>OWN</option><option>OTHER</option>
-            </select>
-          </label>
-          <label className="block space-y-2">
-            <span className="label flex items-center gap-3">
-              State 
-              <InfoIcon explanation="The two-letter state code where the borrower resides (e.g., MA for Massachusetts)." />
-            </span>
-            <input name="state" className="input" defaultValue="MA" />
-          </label>
+      <div className="mt-8 space-y-6">
+        <section className="card">
+          <ScoreForm onSubmit={handleSubmit} submitting={submitting} />
+        </section>
 
-          <div className="md:col-span-2 flex gap-3 pt-2">
-            <button className="btn" type="submit" disabled={loading}>{loading ? "Scoring…" : "Score"}</button>
-            {error && <p className="text-red-400 text-sm">{error}</p>}
+        {error && (
+          <div
+            role="alert"
+            className="rounded-xl border border-red-200 p-5 dark:border-red-900/60"
+          >
+            <h2 className="text-sm font-medium text-red-700 dark:text-red-400">
+              That didn&apos;t score
+            </h2>
+            {/* The model service returns its own message; break-words keeps a long one from
+                widening the card past the page. */}
+            <p className="mt-1 break-words text-sm text-zinc-600 dark:text-zinc-400">{error}</p>
           </div>
-        </form>
+        )}
 
         {result && (
           <>
-            {/* Official saved results */}
-            <div className="mt-6">
-              <h3 className="text-lg font-semibold mb-4">Scoring Results</h3>
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="card">
-                  <div className="text-white/60">Probability of Default (PD)</div>
-                  <div className="text-2xl font-semibold">{(result.pd * 100).toFixed(2)}%</div>
-                </div>
-                <div className="card">
-                  <div className="text-white/60">Risk Grade</div>
-                  <div className="text-2xl font-semibold">{result.risk_grade}</div>
-                  <div className="text-xs text-white/50 mt-1">Calculated from PD</div>
-                </div>
-                <div className="card">
-                  <div className="text-white/60">Decision{isAuthenticated ? " (Saved)" : ""}</div>
-                  <div className="text-2xl font-semibold capitalize">{result.decision}</div>
-                  <div className="text-xs text-white/50 mt-1">Threshold: 15%</div>
-                </div>
-              </div>
-              
-              {/* Grade comparison */}
-              {submittedGrade && submittedGrade !== result.risk_grade && (
-                <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-700/30 rounded-lg">
-                  <div className="flex items-start gap-2">
-                    <span className="text-yellow-400">ℹ️</span>
-                    <div className="text-sm text-white/80">
-                      <p className="font-medium mb-1">Note: Grade Difference</p>
-                      <p>
-                        You selected <span className="font-semibold">Lender-Assigned Grade: {submittedGrade}</span> as input, 
-                        but the model calculated <span className="font-semibold">Risk Grade: {result.risk_grade}</span> from 
-                        the predicted PD ({(result.pd * 100).toFixed(2)}%). The input grade is used as a feature to help predict PD, 
-                        while the risk grade is derived from the final PD value.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {submittedGrade && submittedGrade === result.risk_grade && (
-                <div className="mt-4 p-3 bg-green-900/20 border border-green-700/30 rounded-lg">
-                  <div className="flex items-start gap-2">
-                    <span className="text-green-400">✓</span>
-                    <div className="text-sm text-white/80">
-                      <p>
-                        The calculated <span className="font-semibold">Risk Grade: {result.risk_grade}</span> matches 
-                        your <span className="font-semibold">Lender-Assigned Grade: {submittedGrade}</span>.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Threshold simulation section */}
-            <div className="mt-6 card">
-              <div className="flex items-center gap-2 mb-2">
-                <h3 className="text-lg font-semibold">Adjust Threshold (Simulation)</h3>
-                <InfoIcon explanation="Adjust the approval threshold to see how it would affect the decision. This is for simulation only and does not change the saved decision." />
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm text-white/70">
-                      Approval Threshold: <span className="font-semibold text-white">{(simulatedThreshold * 100).toFixed(0)}%</span>
-                    </label>
-                    <span className="text-xs text-white/50">Range: 1% - 25%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0.01"
-                    max="0.25"
-                    step="0.01"
-                    value={simulatedThreshold}
-                    onChange={(e) => setSimulatedThreshold(parseFloat(e.target.value))}
-                    className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                  />
-                  <div className="flex justify-between text-xs text-white/50 mt-1">
-                    <span>1%</span>
-                    <span>25%</span>
-                  </div>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2 pt-4 border-t border-white/10">
-                  <div>
-                    <div className="text-white/60 text-sm mb-1">Simulated Decision</div>
-                    <div className={`text-2xl font-semibold capitalize ${
-                      result.pd < simulatedThreshold 
-                        ? 'text-green-400' 
-                        : 'text-yellow-400'
-                    }`}>
-                      {result.pd < simulatedThreshold ? "Approve" : "Review"}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-white/60 text-sm mb-1">PD vs Threshold</div>
-                    <div className="text-lg font-semibold">
-                      {(result.pd * 100).toFixed(2)}% <span className="text-white/50">vs</span> {(simulatedThreshold * 100).toFixed(0)}%
-                    </div>
-                    <div className="text-xs text-white/50 mt-1">
-                      {result.pd < simulatedThreshold 
-                        ? "✓ Below threshold - would approve"
-                        : "✗ Above threshold - would review"}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Explanation section */}
-            {result.explanation && (
-              <ExplanationDisplay explanation={result.explanation} pd={result.pd} />
-            )}
-
-            {/* Sign-up prompt for unauthenticated users - placed last */}
-            {!isAuthenticated && (
-              <div className="mt-6 p-4 bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-lg">
-                <div className="flex items-start gap-3">
-                  <div className="text-2xl">💾</div>
-                  <div className="flex-1">
-                    <h4 className="font-semibold mb-2">Save this result to your dashboard</h4>
-                    <p className="text-sm text-white/80 mb-4">
-                      This scoring result is not saved. Create a free account to save your applications, track your portfolio, and access detailed analytics.
-                    </p>
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <Link 
-                        href="/auth?mode=signup" 
-                        className="btn px-6 py-2 text-center"
-                      >
-                        Sign Up Free
-                      </Link>
-                      <Link 
-                        href="/auth?mode=login" 
-                        className="px-6 py-2 text-center text-white/80 hover:text-white border border-white/20 rounded-xl hover:border-white/40 transition-colors"
-                      >
-                        Already have an account? Sign In
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+            <ScoreResult
+              pd={result.pd}
+              riskGrade={result.risk_grade}
+              decision={result.decision}
+              submittedGrade={submittedGrade}
+            />
+            <ThresholdSimulator pd={result.pd} />
+            <ExplanationDisplay explanation={result.explanation} />
+            {!user && <SaveNudge />}
           </>
         )}
-        </div>
-      </main>
+      </div>
+    </main>
+  );
+}
+
+/** Signed out, this result is only in this browser. Said plainly, once, under the result. */
+function SaveNudge() {
+  return (
+    <div className="rounded-xl border border-zinc-200 p-5 dark:border-zinc-800">
+      <h2 className="text-sm font-medium">This one isn&apos;t saved</h2>
+      <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+        It is sitting in this browser only. An account keeps your scored applications together so
+        you can compare them and run a cut-off across the whole set at once.
+      </p>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <Link href="/auth?mode=signup" className="btn">
+          Create an account
+        </Link>
+        <Link href="/auth?mode=login" className="btn-secondary">
+          Sign in
+        </Link>
+      </div>
+    </div>
   );
 }
