@@ -2,106 +2,148 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom slider styles */
+/* Page colors live here rather than in the Tailwind config so light and dark sit next to each
+   other and the config can point both at one variable. Dark mode follows the OS: there is no
+   toggle, so there is no third state to keep in sync. */
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+
+  /* Range inputs are the one control Tailwind utilities cannot reach, so their two surfaces
+     get variables and the vendor-prefixed rules below stay theme-agnostic. */
+  --track: #e4e4e7; /* zinc-200 */
+  --thumb: #18181b; /* zinc-900 */
+
+  /* The select chevron is a background-image, so it cannot take a utility class. zinc-400 is
+     the one value legible against both the white and the near-black page. */
+  --chevron: #a1a1aa;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+    --track: #27272a; /* zinc-800 */
+    --thumb: #fafafa; /* zinc-50 */
+  }
+}
+
+@layer base {
+  html {
+    color-scheme: light dark;
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    @apply font-sans antialiased;
+  }
+
+  /* Every focusable thing gets a visible ring. Nothing in this app may call focus:outline-none
+     without putting something back, so the ring is defined once at the base layer and the
+     component classes below inherit it. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-zinc-900 ring-offset-2 ring-offset-[var(--background)] dark:ring-zinc-100;
+  }
+}
+
+@layer components {
+  /* The canonical surface. Borders, not shadows: a shadow here would imply the card floats
+     above the page, and it does not. Shadows are reserved for the modal and the tooltip. */
+  .card {
+    @apply rounded-xl border border-zinc-200 p-5 dark:border-zinc-800;
+  }
+
+  /* A section with nothing in it says so in one line. No illustration, no call to action. */
+  .empty {
+    @apply rounded-xl border border-dashed border-zinc-300 px-4 py-8 text-center text-sm text-zinc-500 dark:border-zinc-700;
+  }
+
+  /* Small controls get rounded-md, cards get rounded-xl, pills and dots get rounded-full.
+     Uniform rounding everywhere would flatten the hierarchy into nothing. */
+  .btn {
+    @apply inline-flex items-center justify-center rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-md border border-zinc-200 px-3 py-2 text-sm font-medium transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:hover:bg-zinc-900;
+  }
+
+  /* Transparent, not a filled box: the border is what says "you can type here", and it
+     darkens on focus rather than the field changing color. */
+  .input {
+    @apply w-full rounded-md border border-zinc-200 bg-transparent px-3 py-2 text-sm transition-colors placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-800 dark:focus:border-zinc-500;
+  }
+
+  select.input {
+    @apply appearance-none pr-9;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23a1a1aa' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.65rem center;
+    background-repeat: no-repeat;
+    background-size: 1rem;
+  }
+
+  .label {
+    @apply text-sm font-medium;
+  }
+
+  .hint {
+    @apply text-xs text-zinc-500;
+  }
+}
+
+/* The threshold sliders on the score and dashboard screens. Written by hand because the
+   pseudo-elements a range input exposes are outside what utilities can target. */
 .slider {
   -webkit-appearance: none;
   appearance: none;
+  width: 100%;
+  height: 20px;
   background: transparent;
   cursor: pointer;
 }
 
-.slider::-webkit-slider-track {
-  background: #374151;
-  height: 8px;
-  border-radius: 4px;
+.slider::-webkit-slider-runnable-track {
+  background: var(--track);
+  height: 4px;
+  border-radius: 9999px;
 }
 
 .slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  background: #3B82F6;
-  height: 20px;
-  width: 20px;
-  border-radius: 50%;
-  cursor: pointer;
+  margin-top: -6px; /* centres a 16px thumb on a 4px track */
+  background: var(--thumb);
+  height: 16px;
+  width: 16px;
+  border-radius: 9999px;
+  border: none;
 }
 
 .slider::-moz-range-track {
-  background: #374151;
-  height: 8px;
-  border-radius: 4px;
+  background: var(--track);
+  height: 4px;
+  border-radius: 9999px;
   border: none;
 }
 
 .slider::-moz-range-thumb {
-  background: #3B82F6;
-  height: 20px;
-  width: 20px;
-  border-radius: 50%;
-  cursor: pointer;
+  background: var(--thumb);
+  height: 16px;
+  width: 16px;
+  border-radius: 9999px;
   border: none;
 }
 
-:root {
-  color-scheme: dark;
-}
-
-body {
-  @apply bg-bg text-white;
-}
-
-.container {
-  @apply max-w-6xl mx-auto px-4;
-}
-
-.card {
-  @apply rounded-2xl border border-white/10 bg-white/5 p-6 shadow;
-}
-
-.btn {
-  @apply inline-flex items-center justify-center rounded-xl px-4 py-2 bg-accent-500 text-white hover:opacity-90;
-}
-
-.input {
-  @apply w-full rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-white placeholder-white/50;
-}
-
-/* Custom select styling to move dropdown arrow away from edge */
-select.input {
-  @apply pr-10;
-  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
-  background-position: right 0.75rem center;
-  background-repeat: no-repeat;
-  background-size: 1rem;
-  appearance: none;
-}
-
-.label {
-  @apply text-sm text-white/70;
-}
-
-/* Info icon tooltip styles */
-.info-tooltip {
-  animation: fadeIn 0.2s ease-in-out;
-}
-
-/* Portal tooltips should not have transform animations */
-.info-tooltip[style*="position: fixed"] {
-  animation: fadeInOpacity 0.2s ease-in-out;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -10px);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, 0);
+/* A tooltip genuinely floats above the page, so it is one of the few things here that earns
+   a shadow. The fade is skipped for anyone who has asked for less motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .tooltip-enter {
+    animation: tooltip-fade 120ms ease-out;
   }
 }
 
-@keyframes fadeInOpacity {
+@keyframes tooltip-fade {
   from {
     opacity: 0;
   }
