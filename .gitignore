@@ -225,3 +225,6 @@ frontend/.vercel/
 # Misc Node junk
 npm-debug.log*
 .eslintcache
+
+# Claude
+.claude/settings.local.json
