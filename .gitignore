@@ -228,3 +228,5 @@ npm-debug.log*
 
 # Claude
 .claude/settings.local.json
+
+frontend/tsconfig.tsbuildinfo
