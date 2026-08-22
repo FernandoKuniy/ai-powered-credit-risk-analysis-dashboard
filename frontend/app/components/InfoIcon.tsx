@@ -1,153 +1,116 @@
 "use client";
-import { useState, useEffect, useRef, useLayoutEffect } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-interface InfoIconProps {
+/**
+ * Jargon on tap. DTI, revolving utilisation and SHAP all get a plain-English definition
+ * behind a small "i", so the default reading of a screen stays free of terms nobody has to
+ * know in order to use it.
+ *
+ * The tooltip goes in a portal because its triggers sit inside table cells and cards with
+ * their own overflow, which would otherwise clip it. Position is worked out after the panel
+ * has rendered and been measured: the previous version subtracted a hardcoded 100px for the
+ * panel's height, which put long definitions off the top of the window.
+ */
+export default function InfoIcon({
+  explanation,
+  className = "",
+}: {
   explanation: string;
   className?: string;
-  position?: "above" | "below";
-  usePortal?: boolean; // New prop to enable portal rendering
-}
+}) {
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const tooltipId = useId();
 
-export default function InfoIcon({ explanation, className = "", position = "above", usePortal = false }: InfoIconProps) {
-  const [isVisible, setIsVisible] = useState(false);
-  const iconRef = useRef<HTMLDivElement>(null);
-  const tooltipRef = useRef<HTMLDivElement>(null);
-  const positionLockedRef = useRef(false);
-  const lockedPositionRef = useRef<{ top: string; left: string } | null>(null);
-
-  // Reset position lock when tooltip is hidden
-  useEffect(() => {
-    if (!isVisible) {
-      positionLockedRef.current = false;
-      lockedPositionRef.current = null;
-    }
-  }, [isVisible]);
-
-  // Set position directly on DOM element - use refs to avoid closure issues
+  // Measure, then place. Runs before paint so the panel never appears in the wrong spot and
+  // then jumps.
   useLayoutEffect(() => {
-    if (!usePortal || !tooltipRef.current) return;
+    if (!open || !triggerRef.current || !panelRef.current) return;
 
-    const element = tooltipRef.current;
-    
-    if (isVisible && iconRef.current && !positionLockedRef.current) {
-      const rect = iconRef.current.getBoundingClientRect();
-      const tooltipWidth = 320;
-      const spacing = 8;
-      const viewportPadding = 10;
+    const trigger = triggerRef.current.getBoundingClientRect();
+    const panel = panelRef.current.getBoundingClientRect();
+    const margin = 8;
 
-      let top: number;
-      let left = rect.left + rect.width / 2 - tooltipWidth / 2;
+    let left = trigger.left + trigger.width / 2 - panel.width / 2;
+    left = Math.min(left, window.innerWidth - panel.width - margin);
+    left = Math.max(left, margin);
 
-      if (position === "below") {
-        top = rect.bottom + spacing;
-      } else {
-        top = rect.top - 100 - spacing;
-      }
+    // Above by default, because these triggers usually sit on a line of text with content
+    // below it. Flip under the trigger only when there genuinely isn't room above.
+    let top = trigger.top - panel.height - margin;
+    if (top < margin) top = trigger.bottom + margin;
 
-      if (left + tooltipWidth > window.innerWidth - viewportPadding) {
-        left = window.innerWidth - tooltipWidth - viewportPadding;
-      }
-      if (left < viewportPadding) {
-        left = viewportPadding;
-      }
+    setCoords({ top, left });
+  }, [open, explanation]);
 
-      if (position === "above" && top < viewportPadding) {
-        top = rect.bottom + spacing;
-      }
-
-      // Directly set style on DOM element - no React state, no re-renders
-      element.style.cssText = `
-        position: fixed !important;
-        top: ${top}px !important;
-        left: ${left}px !important;
-        z-index: 9999 !important;
-        visibility: visible !important;
-        transform: none !important;
-        transition: opacity 0.2s ease-in-out !important;
-      `;
-      
-      lockedPositionRef.current = { top: `${top}px`, left: `${left}px` };
-      positionLockedRef.current = true;
-    } else if (!isVisible && element) {
-      element.style.visibility = "hidden";
-    }
-  }, [isVisible, usePortal, position]);
-
-  // Close tooltip on scroll
   useEffect(() => {
-    if (!usePortal || !isVisible) return;
+    if (!open) return;
 
-    const handleScroll = () => {
-      setIsVisible(false);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
     };
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (triggerRef.current?.contains(target) || panelRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    // Any scroll invalidates the measured position, and re-measuring on every frame is more
+    // machinery than a definition popover is worth.
+    const onScroll = () => setOpen(false);
 
-    window.addEventListener("scroll", handleScroll, true);
-    
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("scroll", onScroll, true);
     return () => {
-      window.removeEventListener("scroll", handleScroll, true);
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("scroll", onScroll, true);
     };
-  }, [usePortal, isVisible]);
+  }, [open]);
 
-  // Close tooltip when clicking outside
   useEffect(() => {
-    if (!isVisible) return;
+    if (!open) setCoords(null);
+  }, [open]);
 
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        (iconRef.current && iconRef.current.contains(event.target as Node)) ||
-        (tooltipRef.current && tooltipRef.current.contains(event.target as Node))
-      ) {
-        return;
-      }
-      setIsVisible(false);
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isVisible]);
-
-  // Render tooltip content
-  const tooltipContent = isVisible ? (
+  const panel = open ? (
     <div
-      ref={tooltipRef}
-      className={`px-4 py-3 bg-gray-900 text-white text-sm rounded-lg shadow-lg border border-white/10 w-80 ${
-        !usePortal 
-          ? `info-tooltip ${position === "below" ? "top-full mt-2 absolute left-1/2 transform -translate-x-1/2" : "bottom-full mb-2 absolute left-1/2 transform -translate-x-1/2"}`
-          : "" // No animation class for portal tooltips - position set directly via DOM
-      }`}
-      onMouseEnter={() => setIsVisible(true)}
-      onMouseLeave={() => setIsVisible(false)}
+      ref={panelRef}
+      id={tooltipId}
+      role="tooltip"
+      style={{
+        position: "fixed",
+        top: coords?.top ?? 0,
+        left: coords?.left ?? 0,
+        // Hidden until measured, so the first frame doesn't flash in the top-left corner.
+        visibility: coords ? "visible" : "hidden",
+      }}
+      className="tooltip-enter z-50 w-72 max-w-[calc(100vw-1rem)] rounded-lg border border-zinc-200 bg-white p-3 text-sm text-zinc-600 shadow-lg dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
     >
-      <div className="whitespace-normal">
-        {explanation}
-      </div>
-      {/* Tooltip arrow */}
-      {position === "below" ? (
-        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-b-4 border-transparent border-b-gray-900"></div>
-      ) : (
-        <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
-      )}
+      {explanation}
     </div>
   ) : null;
 
   return (
     <>
-      <div className="relative inline-block" ref={iconRef}>
-        <div
-          className={`inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/20 text-white/70 text-xs font-medium cursor-help hover:bg-white/30 transition-colors ${className}`}
-          onMouseEnter={() => setIsVisible(true)}
-          onMouseLeave={() => setIsVisible(false)}
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsVisible(true);
-          }}
-        >
-          i
-        </div>
-        {!usePortal && tooltipContent}
-      </div>
-      {usePortal && typeof window !== "undefined" && createPortal(tooltipContent, document.body)}
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-label="What this means"
+        aria-expanded={open}
+        aria-describedby={open ? tooltipId : undefined}
+        onClick={() => setOpen((wasOpen) => !wasOpen)}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        className={`inline-flex size-4 shrink-0 items-center justify-center rounded-full border border-zinc-300 text-[10px] font-medium leading-none text-zinc-500 transition-colors hover:border-zinc-400 hover:text-zinc-900 dark:border-zinc-700 dark:hover:border-zinc-500 dark:hover:text-zinc-100 ${className}`}
+      >
+        i
+      </button>
+      {typeof document !== "undefined" && panel ? createPortal(panel, document.body) : null}
     </>
   );
 }

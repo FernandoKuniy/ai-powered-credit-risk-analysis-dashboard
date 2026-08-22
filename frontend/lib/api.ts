@@ -1,3 +1,26 @@
+/** One feature's SHAP contribution. `positive` means it pushed the probability up. */
+export type FeatureContribution = {
+  feature: string;
+  shap_value: number;
+  impact: "positive" | "negative";
+  contribution_pct: number;
+  feature_key?: string | null;
+  original_value?: string | null;
+};
+
+export type Explanation = {
+  top_features: FeatureContribution[];
+  summary: string;
+};
+
+/** What POST /api/score returns. Mirrors ScoreResponse in backend/schemas.py. */
+export type ScoreResponse = {
+  pd: number;
+  risk_grade: string;
+  decision: string;
+  explanation: Explanation | null;
+};
+
 export type ScorePayload = {
   loan_amnt: number;
   annual_inc: number;
@@ -12,7 +35,10 @@ export type ScorePayload = {
   fico: number;
 };
 
-export async function scoreApplication(payload: ScorePayload, accessToken?: string) {
+export async function scoreApplication(
+  payload: ScorePayload,
+  accessToken?: string,
+): Promise<ScoreResponse> {
   const headers: HeadersInit = { "Content-Type": "application/json" };
   
   if (accessToken) {
@@ -24,23 +50,37 @@ export async function scoreApplication(payload: ScorePayload, accessToken?: stri
     headers,
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await describeFailure(res));
   return res.json();
+}
+
+/**
+ * A message worth showing someone.
+ *
+ * A failing upstream does not reliably put anything in the body: the score route returns a
+ * bare 500 when the model service is unreachable, and `new Error("")` further up renders as
+ * nothing at all, so the screen sat there looking like the click never happened. The status
+ * is the floor, and FastAPI's `detail` field is used when there is one.
+ */
+async function describeFailure(res: Response): Promise<string> {
+  const body = await res.text().catch(() => "");
+  const trimmed = body.trim();
+  if (!trimmed) return `The scoring service returned ${res.status} with no explanation.`;
+  try {
+    const parsed = JSON.parse(trimmed);
+    const detail = parsed?.detail ?? parsed?.error;
+    if (typeof detail === "string" && detail.trim()) return detail;
+  } catch {
+    // Not JSON. The raw text is more use than a generic message.
+  }
+  return trimmed;
 }
 
 export type UnsavedApplication = ScorePayload & {
   pd: number;
   risk_grade: string;
   decision: string;
-  explanation: {
-    top_features: Array<{
-      feature: string;
-      shap_value: number;
-      impact: "positive" | "negative";
-      contribution_pct: number;
-    }>;
-    summary: string;
-  } | null;
+  explanation: Explanation | null;
   timestamp: string; // ISO string of when it was scored
 };
 
