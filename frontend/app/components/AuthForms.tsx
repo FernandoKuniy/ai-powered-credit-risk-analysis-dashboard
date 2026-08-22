@@ -1,203 +1,189 @@
 "use client";
-import { useState } from 'react';
-import { useAuth } from '../../lib/auth';
-import { useRouter } from 'next/navigation';
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { useAuth } from "../../lib/auth";
+import Field, { fieldProps } from "./Field";
 
 export function LoginForm() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { signIn } = useAuth();
   const router = useRouter();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setSubmitting(true);
     setError(null);
 
-    const { error } = await signIn(email, password);
-    
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-    } else {
-      // Successful sign-in - redirect to dashboard
-      router.push('/dashboard');
+    const { error: signInError } = await signIn(email, password);
+    if (signInError) {
+      // Supabase phrases a wrong password and an unknown address identically on purpose, so
+      // this stays vague too rather than confirming whether an account exists.
+      setError(signInError.message || "That email and password didn't match.");
+      setSubmitting(false);
+      return;
     }
-  };
+    router.push("/dashboard");
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium mb-1">Email</label>
+      <Field id="login-email" label="Email">
         <input
+          {...fieldProps("login-email")}
           type="email"
+          className="input"
+          autoComplete="email"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="input"
+          onChange={(event) => setEmail(event.target.value)}
           required
         />
-      </div>
-      <div>
-        <label className="block text-sm font-medium mb-1">Password</label>
+      </Field>
+      <Field id="login-password" label="Password">
         <input
+          {...fieldProps("login-password")}
           type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
           className="input"
+          autoComplete="current-password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
           required
         />
-      </div>
-      {error && (
-        <div className="text-red-400 text-sm">{error}</div>
-      )}
-      <button
-        type="submit"
-        disabled={loading}
-        className="btn w-full"
-      >
-        {loading ? 'Signing in...' : 'Sign In'}
+      </Field>
+      {error && <FormError>{error}</FormError>}
+      <button type="submit" className="btn w-full" disabled={submitting}>
+        {submitting ? "Signing in…" : "Sign in"}
       </button>
     </form>
   );
 }
 
 export function SignUpForm({ onSwitchToLogin }: { onSwitchToLogin?: () => void }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [isNewUser, setIsNewUser] = useState(false);
-  const [showSwitchToLogin, setShowSwitchToLogin] = useState(false);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
   const { signUp } = useAuth();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setSubmitting(true);
     setError(null);
-    setShowSwitchToLogin(false);
-    setIsNewUser(false);
+    setErrorCode(null);
 
-    const { error, isNewUser } = await signUp(email, password, fullName);
-    
-    if (error) {
-      setError(error.message);
-      
-      // Show option to switch to login for duplicate email cases
-      if (error.code === 'DUPLICATE_EMAIL' || error.code === 'CHECK_EMAIL_OR_SIGNIN') {
-        setShowSwitchToLogin(true);
-      }
+    const { error: signUpError } = await signUp(email, password, fullName);
+    if (signUpError) {
+      setError(signUpError.message || "That didn't go through.");
+      setErrorCode(signUpError.code ?? null);
     } else {
-      setSuccess(true);
-      setIsNewUser(isNewUser || false);
+      setSubmitted(true);
     }
-    
-    setLoading(false);
-  };
+    setSubmitting(false);
+  }
 
-  if (success) {
+  // Whether the account is new or already existed, the next step is the same and the copy
+  // says the same thing. Spelling out which one it was would tell anyone with an email
+  // address whether it is registered here.
+  if (submitted) {
     return (
-      <div className="text-center">
-        {isNewUser ? (
-          <>
-            <div className="text-green-400 mb-4">✓ Account created successfully!</div>
-            <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4 mb-4">
-              <p className="text-white/90 font-medium mb-2">📧 Check your email</p>
-              <p className="text-white/70 text-sm">
-                We've sent a confirmation link to <strong>{email}</strong>
-              </p>
-              <p className="text-white/70 text-sm mt-2">
-                Click the link in your email to activate your account and start using the platform.
-              </p>
-            </div>
-            <p className="text-white/60 text-xs">
-              Didn't receive the email? Check your spam folder or try signing up again.
-            </p>
-          </>
-        ) : (
-          <>
-            <div className="text-blue-400 mb-4">📧 Check your email</div>
-            <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4 mb-4">
-              <p className="text-white/90 font-medium mb-2">Account verification</p>
-              <p className="text-white/70 text-sm">
-                Please check your email for a confirmation link, or try signing in if you already have an account.
-              </p>
-            </div>
-            {onSwitchToLogin && (
-              <button
-                type="button"
-                onClick={onSwitchToLogin}
-                className="text-blue-400 hover:text-blue-300 text-sm underline"
-              >
-                Sign in instead
-              </button>
-            )}
-          </>
-        )}
+      <div>
+        <h2 className="text-sm font-medium">Check your email</h2>
+        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+          If that address can be used, there is now a confirmation link in it for{" "}
+          <span className="break-all font-medium">{email}</span>. The account works once you
+          follow it.
+        </p>
+        <p className="mt-4 text-sm text-zinc-500">
+          Nothing arrived? Check spam, then{" "}
+          {onSwitchToLogin ? (
+            <button
+              type="button"
+              onClick={onSwitchToLogin}
+              className="underline underline-offset-2 hover:text-zinc-900 dark:hover:text-zinc-100"
+            >
+              try signing in
+            </button>
+          ) : (
+            "try signing in"
+          )}
+          .
+        </p>
       </div>
     );
   }
 
+  const suggestSignIn = errorCode === "DUPLICATE_EMAIL" || errorCode === "CHECK_EMAIL_OR_SIGNIN";
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium mb-1">Full Name</label>
+      <Field id="signup-name" label="Full name">
         <input
+          {...fieldProps("signup-name")}
           type="text"
+          className="input"
+          autoComplete="name"
           value={fullName}
-          onChange={(e) => setFullName(e.target.value)}
-          className="input"
+          onChange={(event) => setFullName(event.target.value)}
           required
         />
-      </div>
-      <div>
-        <label className="block text-sm font-medium mb-1">Email</label>
+      </Field>
+      <Field id="signup-email" label="Email">
         <input
+          {...fieldProps("signup-email")}
           type="email"
+          className="input"
+          autoComplete="email"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="input"
+          onChange={(event) => setEmail(event.target.value)}
           required
         />
-      </div>
-      <div>
-        <label className="block text-sm font-medium mb-1">Password</label>
+      </Field>
+      <Field id="signup-password" label="Password" help="At least six characters.">
         <input
+          {...fieldProps("signup-password")}
           type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
           className="input"
-          required
+          autoComplete="new-password"
           minLength={6}
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          required
         />
-      </div>
+      </Field>
       {error && (
-        <div className="text-red-400 text-sm">{error}</div>
+        <FormError>
+          {error}
+          {suggestSignIn && onSwitchToLogin && (
+            <>
+              {" "}
+              <button
+                type="button"
+                onClick={onSwitchToLogin}
+                className="underline underline-offset-2"
+              >
+                Sign in instead
+              </button>
+              .
+            </>
+          )}
+        </FormError>
       )}
-      
-      {showSwitchToLogin && onSwitchToLogin && (
-        <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-3 mb-4">
-          <p className="text-white/90 text-sm mb-2">Need to access your account?</p>
-          <button
-            type="button"
-            onClick={onSwitchToLogin}
-            className="text-blue-400 hover:text-blue-300 text-sm underline"
-          >
-            Sign in instead
-          </button>
-        </div>
-      )}
-      
-      <button
-        type="submit"
-        disabled={loading}
-        className="btn w-full"
-      >
-        {loading ? 'Creating account...' : 'Create Account'}
+      <button type="submit" className="btn w-full" disabled={submitting}>
+        {submitting ? "Creating your account…" : "Create account"}
       </button>
     </form>
+  );
+}
+
+function FormError({ children }: { children: React.ReactNode }) {
+  return (
+    <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+      {children}
+    </p>
   );
 }

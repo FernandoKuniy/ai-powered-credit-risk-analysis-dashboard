@@ -1,43 +1,57 @@
 "use client";
 import { useAuth } from "../../lib/auth";
+import { NARROW } from "../../lib/layout";
 
+/**
+ * Auth state, for working out why a session is not what you expected.
+ *
+ * Deliberately plain. It is a development tool, and dressing it up would be polish spent
+ * where nobody is looking.
+ */
 export default function AuthDebug() {
-  // Only allow debug page in development mode
-  const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true' || process.env.NODE_ENV === 'development';
-  
+  // Called unconditionally. It used to sit below the dev-mode early return, which is a
+  // conditional hook call: in production the component returned before useAuth ran, and any
+  // later edit that made the branch flip between renders would have broken the hook order.
+  const { user, session, loading } = useAuth();
+
+  const isDevMode =
+    process.env.NEXT_PUBLIC_DEV_MODE === "true" || process.env.NODE_ENV === "development";
+
   if (!isDevMode) {
     return (
-      <div className="card">
-        <h3 className="text-lg font-semibold mb-4">Debug Page</h3>
-        <p className="text-white/60">This page is only available in development mode.</p>
-      </div>
+      <main className={`${NARROW} flex-1 py-10`}>
+        <h1 className="text-2xl font-semibold tracking-tight">Debug</h1>
+        <p className="empty mt-6">Only available in development.</p>
+      </main>
     );
   }
 
-  const { user, session, loading } = useAuth();
-
   return (
-    <div className="card">
-      <h3 className="text-lg font-semibold mb-4">Authentication Debug</h3>
-      <div className="space-y-2 text-sm">
-        <div><strong>Loading:</strong> {loading ? 'true' : 'false'}</div>
-        <div><strong>Session:</strong> {session ? 'exists' : 'null'}</div>
-        <div><strong>User:</strong> {user ? 'exists' : 'null'}</div>
-        {user && (
-          <>
-            <div><strong>User ID:</strong> {user.id}</div>
-            <div><strong>Email:</strong> {user.email}</div>
-            <div><strong>Role:</strong> {user.profile.role}</div>
-          </>
-        )}
-        {session && (
-          <>
-            <div><strong>Access Token:</strong> {session.access_token ? 'exists' : 'null'}</div>
-            <div><strong>User ID:</strong> {session.user.id}</div>
-            <div><strong>User Email:</strong> {session.user.email}</div>
-          </>
-        )}
-      </div>
+    <main className={`${NARROW} flex-1 py-10`}>
+      <h1 className="text-2xl font-semibold tracking-tight">Auth debug</h1>
+      <dl className="mt-6 divide-y divide-zinc-100 overflow-hidden rounded-xl border border-zinc-200 text-sm dark:divide-zinc-800 dark:border-zinc-800">
+        <Row label="Loading" value={String(loading)} />
+        <Row label="Session" value={session ? "present" : "none"} />
+        <Row label="Access token" value={session?.access_token ? "present" : "none"} />
+        <Row label="User" value={user ? "present" : "none"} />
+        <Row label="User ID" value={user?.id ?? "none"} />
+        <Row label="Email" value={user?.email ?? "none"} />
+        <Row label="Role" value={user?.profile?.role ?? "none"} />
+      </dl>
+      <p className="mt-3 text-xs text-zinc-500">
+        Token values are never printed here, only whether one is set.
+      </p>
+    </main>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 px-4 py-3">
+      <dt className="text-zinc-500">{label}</dt>
+      {/* Ids are long and have no natural break, so this wraps rather than pushing the row
+          wider than the card. */}
+      <dd className="min-w-0 break-all text-right font-medium">{value}</dd>
     </div>
   );
 }
