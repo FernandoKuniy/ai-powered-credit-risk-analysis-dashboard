@@ -132,6 +132,13 @@ Subset of 50k–200k records used for demo purposes.
 - **Backend (Render)**: `SUPABASE_URL`, `SUPABASE_KEY`, `ALLOWED_ORIGINS`, `API_KEY`
 - **Frontend (Vercel)**: `NEXT_PUBLIC_API_URL`, `API_KEY`
 
+### Keeping Free-Tier Services Awake
+Render spins the backend down after ~15 min idle, and Supabase pauses a free project after 7 days
+with no *database* activity. `.github/workflows/keep-warm.yml` pings `/health/db` on a loop to hold
+both open (Vercel does not idle-pause, so it is not pinged). It needs a `KEEPWARM_BACKEND_URL` repo
+variable to do anything. This reduces cold starts rather than eliminating them — see the
+"Keeping Free-Tier Services Awake" section of `DEPLOYMENT.md` for the cadence math and its limits.
+
 See `DEPLOYMENT.md` for detailed setup instructions.
 
 ## 🧰 Future Enhancements

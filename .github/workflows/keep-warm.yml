@@ -1,0 +1,209 @@
+name: Keep Warm
+
+# Keeps the two free-tier services behind this project from going to sleep:
+#
+#   * Render (backend web service) spins down after ~15 minutes with no HTTP
+#     traffic, and a cold start then costs 45-60s on the next real visitor.
+#   * Supabase (Postgres) pauses a free project after 7 days with no *database*
+#     activity. HTTP hits alone do not count, which is why the ping targets
+#     /health/db -- that route runs a real (RLS-empty, zero-row) count query.
+#
+# Vercel hosts the frontend and does NOT idle-pause, so nothing here pings it.
+#
+# Why a loop instead of just a tighter cron: GitHub throttles *scheduled*
+# workflows heavily under load, so a `*/10` cron does not actually fire every
+# 10 minutes -- observed median gap in a sibling project was 34 minutes, worst
+# case 112. The job itself is not throttled once it starts, so each run pings
+# on a loop from the inside to cover the gap. This repo is public, so Actions
+# minutes are unmetered and the loop is free.
+
+on:
+  schedule:
+    # Best-effort every 10 minutes. GitHub will not honour this exactly; the
+    # in-run loop below is what actually provides continuous coverage.
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  keep-warm:
+    runs-on: ubuntu-latest
+    # Loop covers (PINGS-1)*INTERVAL = 30 min of wall clock, plus retry budget
+    # on the final ping. 45 leaves headroom without letting a wedged run idle.
+    timeout-minutes: 45
+
+    env:
+      # Render backend base URL, e.g. https://your-backend.onrender.com
+      # Repo *variable* (Settings > Secrets and variables > Actions > Variables),
+      # not a secret -- it is not sensitive and secrets are unreadable in logs.
+      BACKEND_URL: ${{ vars.KEEPWARM_BACKEND_URL }}
+      # Optional direct-to-Supabase backstop, so the 7-day pause protection does
+      # not depend on Render being healthy. Both must be set or it is skipped.
+      SUPABASE_URL: ${{ vars.KEEPWARM_SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.KEEPWARM_SUPABASE_ANON_KEY }}
+      PINGS: '7'
+      INTERVAL: '300'
+      # Retry budget per ping: 5 retries x 20s = ~100s of tolerance, which has to
+      # outlast a 45-60s Render cold boot. Exposed as env so the behaviour can be
+      # exercised without editing the script.
+      RETRIES: '5'
+      RETRY_DELAY: '20'
+
+    steps:
+      - name: Ping backend and database
+        run: |
+          set -o pipefail
+
+          # --- config guard -------------------------------------------------
+          # A fresh clone or a fork has no repo variables set. No-op rather than
+          # fail, but warn loudly: a watchdog that never pings is worse than one
+          # that fails, because it looks green forever.
+          if [ -z "${BACKEND_URL}" ] && { [ -z "${SUPABASE_URL}" ] || [ -z "${SUPABASE_ANON_KEY}" ]; }; then
+            echo "::warning title=Keep-warm skipped::No targets configured. Set the KEEPWARM_BACKEND_URL repo variable (and optionally KEEPWARM_SUPABASE_URL + the KEEPWARM_SUPABASE_ANON_KEY secret) to enable this workflow."
+            echo "Nothing was pinged." >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+
+          # curl's stderr goes to a file so it never contaminates the -w capture.
+          err_file="$(mktemp)"
+
+          # ping <label> <url> [extra curl args...]
+          # Echoes "<http_code> <exit_code> <seconds>"; never exits non-zero itself.
+          #
+          # Retry budget is deliberately ~100s (5 x 20s) so it outlasts a 45-60s
+          # Render cold boot. That matters more than it looks: a waking instance
+          # often gets an *immediate* 502/503 from Render's edge rather than a
+          # held-open connection, so the failure never touches --max-time and a
+          # short budget would fail the very job meant to prevent the cold start.
+          # curl treats 408/429/5xx and timeouts as transient and retries them.
+          ping() {
+            local label="$1" url="$2"; shift 2
+            local out rc code secs t0 elapsed
+            t0="${SECONDS}"
+
+            # Assignment inside `if` so `set -e` (GitHub runs `bash -e`) does not
+            # abort the step on a failing curl, and no pipeline is involved so the
+            # status we read is curl's own, not some downstream `tr`/`tee`.
+            if out=$(curl -sS -o /dev/null \
+                          --connect-timeout 15 \
+                          --max-time 30 \
+                          --retry "${RETRIES}" \
+                          --retry-delay "${RETRY_DELAY}" \
+                          --retry-connrefused \
+                          -w '%{http_code} %{time_total}' \
+                          "$@" \
+                          "${url}" 2>"${err_file}"); then
+              rc=0
+            else
+              rc=$?
+            fi
+
+            # Bash parameter substitution, not `cut`/`awk` -- keeps this pipeline-free.
+            code="${out%% *}"
+            secs="${out##* }"
+            [ -n "${code}" ] || code="000"
+            [ -n "${secs}" ] || secs="0"
+
+            # curl's %{time_total} covers only the LAST attempt, so a ping that
+            # spent 100s working through its retry budget reports "0.003s" and
+            # reads as instant. Wall clock is what tells you a cold boot happened.
+            elapsed=$(( SECONDS - t0 ))
+
+            # Always log status + timing. `-fsS` alone throws both away, and then a
+            # failure reads as bare "error: 503" with no way to tell Render's edge
+            # 503 from the app's own "database unreachable" 503.
+            if [ "${rc}" -eq 0 ] && [ "${code}" -ge 200 ] && [ "${code}" -lt 400 ]; then
+              echo "  ${label}: OK    http=${code} last_attempt=${secs}s wall=${elapsed}s"
+              return 0
+            fi
+
+            echo "  ${label}: FAIL  http=${code} last_attempt=${secs}s wall=${elapsed}s (curl exit ${rc})"
+            if [ -s "${err_file}" ]; then
+              # Last line only: curl writes one error per retry attempt, and
+              # echoing all of them buries the log in identical messages.
+              local last_err
+              last_err="$(tail -n 1 "${err_file}")"
+              echo "    curl: ${last_err:0:300}"
+            fi
+            return 1
+          }
+
+          # --- Supabase backstop: one ping is plenty against a 7-day window ---
+          supabase_state="skipped (not configured)"
+          if [ -n "${SUPABASE_URL}" ] && [ -n "${SUPABASE_ANON_KEY}" ]; then
+            echo "Supabase direct ping"
+            # HEAD-equivalent zero-row read. RLS is on and the anon key carries no
+            # user identity, so this reaches Postgres and returns nothing.
+            if ping "supabase" "${SUPABASE_URL%/}/rest/v1/applications?select=id&limit=1" \
+                    -H "apikey: ${SUPABASE_ANON_KEY}" \
+                    -H "Range: 0-0"; then
+              supabase_state="ok"
+            else
+              # Warning, not failure: the backend ping below also exercises the DB,
+              # and a 7-day window makes a single missed ping harmless.
+              supabase_state="failed"
+              echo "::warning title=Supabase ping failed::Direct Supabase ping did not succeed. The backend /health/db pings still exercise the database; investigate if this repeats."
+            fi
+          fi
+
+          # --- Render backend: loop to beat the scheduler throttle -------------
+          ok=0
+          fail=0
+          backend_state="skipped (not configured)"
+
+          if [ -n "${BACKEND_URL}" ]; then
+            target="${BACKEND_URL%/}/health/db"
+            echo "Backend loop: ${PINGS} pings, ${INTERVAL}s apart -> ${target}"
+            started="${SECONDS}"
+
+            for i in $(seq 1 "${PINGS}"); do
+              if [ "${i}" -gt 1 ]; then
+                # Sleep to the next fixed slot rather than a flat INTERVAL after the
+                # previous ping. A slow retrying ping would otherwise push every
+                # later slot back and blow through timeout-minutes.
+                target_at=$(( (i - 1) * INTERVAL ))
+                now=$(( SECONDS - started ))
+                remain=$(( target_at - now ))
+                if [ "${remain}" -gt 0 ]; then
+                  sleep "${remain}"
+                fi
+              fi
+
+              if ping "ping ${i}/${PINGS}" "${target}"; then
+                ok=$(( ok + 1 ))
+              else
+                fail=$(( fail + 1 ))
+              fi
+            done
+
+            backend_state="${ok} ok / ${fail} failed"
+          fi
+
+          rm -f "${err_file}"
+
+          # --- summary + failure policy ---------------------------------------
+          {
+            echo "### Keep-warm result"
+            echo ""
+            echo "| Target | Result |"
+            echo "| --- | --- |"
+            echo "| Render backend (\`/health/db\`) | ${backend_state} |"
+            echo "| Supabase (direct) | ${supabase_state} |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          echo "backend: ${backend_state}; supabase: ${supabase_state}"
+
+          if [ -n "${BACKEND_URL}" ]; then
+            if [ "${ok}" -eq 0 ]; then
+              # Total blackout -- every ping in a 30-minute window failed. This is
+              # the only condition worth an email.
+              echo "::error title=Backend unreachable::All ${PINGS} pings to ${BACKEND_URL%/}/health/db failed."
+              exit 1
+            fi
+            if [ "${fail}" -gt 0 ]; then
+              # Partial failure during a cold boot is normal noise. Failing here
+              # would train us to ignore the alert that actually matters.
+              echo "::warning title=Some pings failed::${fail} of ${PINGS} backend pings failed (${ok} succeeded)."
+            fi
+          fi

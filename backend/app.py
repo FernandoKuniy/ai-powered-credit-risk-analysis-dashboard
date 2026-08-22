@@ -751,6 +751,40 @@ def health():
         "allowed_origins": ALLOWED_ORIGINS
     }
 
+@app.get("/health/db")
+def health_db():
+    """Liveness probe that performs a real database round-trip.
+
+    Supabase counts *database* activity when deciding whether a free project has
+    gone idle, so a static {"ok": true} response is not enough to keep it awake.
+    This runs the cheapest real query available -- a HEAD-style exact count over
+    `applications` -- which reaches Postgres but returns no rows.
+
+    Unauthenticated on purpose so an external watchdog can call it. RLS is enabled
+    on `applications` and the anon key carries no user identity, so the visible row
+    set is always empty and the returned count is always 0; no data is exposed.
+    Returns 503 when the database cannot be reached, so a failed ping is loud.
+    """
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Database is not configured."
+        )
+
+    # Client construction itself validates the URL/key and raises, so it has to sit
+    # inside the try -- otherwise a bad key surfaces as a 500 instead of a 503.
+    try:
+        supabase = get_supabase_client()
+        supabase.table("applications").select("id", count="exact").limit(0).execute()
+    except Exception as e:
+        logger.error(f"Database health check failed: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="Database is unreachable."
+        )
+
+    return {"status": "ok", "database": "reachable"}
+
 @app.post("/score", response_model=ScoreResponse, dependencies=[Depends(require_key)])
 @limiter.limit(SCORE_RATE_LIMIT)
 def score(request: Request, req: ScoreRequest, authorization: str | None = Header(default=None)):
